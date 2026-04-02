@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ProtectedLayout from "@/components/ProtectedLayout";
+import Dialog from "@/components/Dialog";
 import { api, Message, ConversationDetail } from "@/lib/api";
 
 // Render interactive message placeholders as styled tags
@@ -62,6 +63,10 @@ export default function ConversationPage() {
   // AI Summary state
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+
+  // Dialog state
+  const [showResolveDialog, setShowResolveDialog] = useState(false);
+  const [errorDialog, setErrorDialog] = useState<string | null>(null);
 
   const scrollToBottom = () => {
     if (chatRef.current) {
@@ -144,20 +149,19 @@ export default function ConversationPage() {
     try {
       await api.post(`/admin/api/conversations/${id}/reply`, { message: reply });
     } catch (e) {
-      alert("Failed to send: " + (e as Error).message);
+      setErrorDialog("Failed to send: " + (e as Error).message);
     } finally {
       setSending(false);
     }
   };
 
   const handleResolve = async () => {
-    if (!confirm("Resolve this conversation? The bot will resume for this user.")) return;
     setResolving(true);
     try {
       await api.post(`/admin/api/conversations/${id}/resolve`, { notes: "" });
       router.push("/dashboard");
     } catch (e) {
-      alert("Failed to resolve: " + (e as Error).message);
+      setErrorDialog("Failed to resolve: " + (e as Error).message);
       setResolving(false);
     }
   };
@@ -179,7 +183,7 @@ export default function ConversationPage() {
       await api.post(`/admin/api/conversations/${id}/transfer`, { target_agent_id: transferTarget });
       router.push("/dashboard");
     } catch (e) {
-      alert("Transfer failed: " + (e as Error).message);
+      setErrorDialog("Transfer failed: " + (e as Error).message);
       setTransferring(false);
     }
   };
@@ -208,7 +212,8 @@ export default function ConversationPage() {
                 Transfer
               </button>
               <button
-                onClick={handleResolve}
+                type="button"
+                onClick={() => setShowResolveDialog(true)}
                 disabled={resolving}
                 className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition disabled:opacity-50"
               >
@@ -376,6 +381,27 @@ export default function ConversationPage() {
           </div>
         </div>
       )}
+
+      {/* Resolve Confirmation Dialog */}
+      <Dialog
+        open={showResolveDialog}
+        onClose={() => setShowResolveDialog(false)}
+        onConfirm={() => { setShowResolveDialog(false); handleResolve(); }}
+        title="Resolve Conversation"
+        message="This will close the conversation and the bot will resume handling this user. Are you sure?"
+        confirmLabel="Resolve"
+        variant="success"
+        loading={resolving}
+      />
+
+      {/* Error Dialog */}
+      <Dialog
+        open={!!errorDialog}
+        onClose={() => setErrorDialog(null)}
+        title="Error"
+        message={errorDialog || ""}
+        variant="danger"
+      />
     </ProtectedLayout>
   );
 }
