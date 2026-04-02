@@ -1,0 +1,5 @@
+# Secrets & Credentials
+cred.txt
+service_account.json
+*.env
+.env.*
