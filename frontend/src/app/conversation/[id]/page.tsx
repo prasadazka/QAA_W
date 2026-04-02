@@ -141,6 +141,7 @@ export default function ConversationPage() {
       ai_intent: "agent_reply",
       ai_confidence: null,
       created_at: new Date().toISOString(),
+      sender_name: null,
     };
     setMessages((prev) => [...prev, optimistic]);
     setReply("");
