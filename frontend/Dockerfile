@@ -3,8 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=https://qaa-backend-dev-70871485238.me-central1.run.app
 RUN npm run build
 
 FROM node:20-alpine AS runner
