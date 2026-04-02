@@ -64,7 +64,9 @@ jobs:
             --min-instances=0
             --max-instances=3
             --port=8080
-            --set-env-vars=ENVIRONMENT=dev,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}
+            --add-cloudsql-instances=qaaw-492106:me-central1:qaa-db-dev
+            --set-env-vars=ENVIRONMENT=dev,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},GCP_REGION=${{ env.GCP_REGION }},DB_HOST=34.18.37.125,DB_PORT=5432,DB_NAME=qaa_dev,DB_USER=postgres
+            --set-secrets=DB_PASSWORD=qaa-db-password-dev:latest,WHATSAPP_API_KEY=qaa-whatsapp-api-key:latest
 
       - name: Verify deployment
         run: |
