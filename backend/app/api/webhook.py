@@ -11,6 +11,7 @@ from app.services.conversation import (
     get_or_create_conversation,
     get_conversation_history,
     escalate_conversation,
+    create_escalation_ticket,
     save_message,
     log_webhook,
 )
@@ -241,6 +242,7 @@ async def process_message(payload: dict):
         # ── 0b. Escalation request → hand over ─────────────
         if content.lower() in ESCALATION_TRIGGERS:
             context = escalate_conversation(conv["id"], user["id"], reason=content)
+            create_escalation_ticket(conv["id"], user["id"], "whatsapp_registration", content, content)
             logger.info(f"Escalation for {phone}: {context['escalation_reason']}")
             result = await send_text_message(phone, ESCALATION_MSG)
             ai_intent = "escalation"

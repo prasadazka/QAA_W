@@ -60,5 +60,12 @@ class Settings:
     LLM_MAX_TOKENS = _int("LLM_MAX_TOKENS", 512)
     LLM_API_TIMEOUT = _float("LLM_API_TIMEOUT", 15.0)
 
+    # Admin / Auth
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "qaa-dev-secret-change-in-prod")
+    JWT_ALGORITHM = "HS256"
+    JWT_EXPIRY_HOURS = _int("JWT_EXPIRY_HOURS", 24)
+    ADMIN_DEFAULT_EMAIL = os.getenv("ADMIN_DEFAULT_EMAIL", "admin@qaa.edu.qa")
+    ADMIN_DEFAULT_PASSWORD = os.getenv("ADMIN_DEFAULT_PASSWORD", "")
+
 
 settings = Settings()

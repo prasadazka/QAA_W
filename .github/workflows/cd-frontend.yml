@@ -1,23 +1,24 @@
-name: CD - Deploy to Dev (Cloud Run)
+name: CD - Deploy Frontend (Cloud Run)
 
 on:
   push:
     branches: [main]
     paths:
-      - "backend/**"
-      - ".github/workflows/cd-dev.yml"
+      - "frontend/**"
+      - ".github/workflows/cd-frontend.yml"
   workflow_dispatch:
 
 env:
   GCP_PROJECT_ID: qaaw-492106
   GCP_REGION: me-central1
   AR_REPOSITORY: qaa-docker
-  SERVICE_NAME: qaa-backend-dev
-  IMAGE_NAME: qaa-backend
+  SERVICE_NAME: qaa-frontend-dev
+  IMAGE_NAME: qaa-frontend
+  BACKEND_URL: https://qaa-backend-dev-70871485238.me-central1.run.app
 
 jobs:
   build-and-deploy:
-    name: Build & Deploy to Cloud Run (Dev)
+    name: Build & Deploy Frontend to Cloud Run
     runs-on: ubuntu-latest
     environment: dev
 
@@ -39,9 +40,10 @@ jobs:
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Build Docker image
-        working-directory: backend
+        working-directory: frontend
         run: |
           docker build \
+            --build-arg NEXT_PUBLIC_API_URL=${{ env.BACKEND_URL }} \
             -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}:latest \
             .
@@ -59,29 +61,26 @@ jobs:
           image: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           flags: |
             --allow-unauthenticated
-            --memory=512Mi
+            --memory=256Mi
             --cpu=1
             --min-instances=0
-            --max-instances=3
-            --port=8080
-            --add-cloudsql-instances=qaaw-492106:me-central1:qaa-db-dev
-            --set-env-vars=ENVIRONMENT=dev,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},GCP_REGION=${{ env.GCP_REGION }},DB_HOST=34.18.37.125,DB_PORT=5432,DB_NAME=qaa_dev,DB_USER=postgres,CLOUD_SQL_INSTANCE=qaaw-492106:me-central1:qaa-db-dev,WHATSAPP_API_URL=https://waba-v2.360dialog.io,EMBEDDING_MODEL=text-embedding-004,EMBEDDING_DIMENSIONS=768,EMBEDDING_BATCH_SIZE=250,CHUNK_SIZE=500,CHUNK_MIN_LENGTH=20,CHUNK_MAX_KEYWORDS=8,SIMILARITY_THRESHOLD=0.35,SEARCH_RESULT_LIMIT=3,DEFAULT_CHANNEL=whatsapp_registration,LLM_MODEL=gemini-2.5-flash,LLM_REGION=us-central1,LLM_TEMPERATURE=0.3,LLM_MAX_TOKENS=512,LLM_API_TIMEOUT=15.0
-            --set-secrets=DB_PASSWORD=qaa-db-password-dev:latest,WHATSAPP_API_KEY=qaa-whatsapp-api-key:latest,JWT_SECRET_KEY=qaa-jwt-secret:latest
+            --max-instances=2
+            --port=3000
 
       - name: Verify deployment
         run: |
           SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
             --region=${{ env.GCP_REGION }} \
             --format='value(status.url)')
-          echo "Service URL: $SERVICE_URL"
+          echo "Frontend URL: $SERVICE_URL"
           for i in 1 2 3 4 5; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health" || true)
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL" || true)
             if [ "$STATUS" = "200" ]; then
-              echo "Health check passed!"
+              echo "Frontend is live!"
               exit 0
             fi
             echo "Attempt $i: Status $STATUS, retrying in 10s..."
             sleep 10
           done
-          echo "Health check failed"
+          echo "Frontend health check failed"
           exit 1

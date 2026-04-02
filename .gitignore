@@ -3,4 +3,12 @@ cred.txt
 service_account.json
 *.env
 .env.*
+
+# Python
 __pycache__/
+*.pyc
+
+# Node / Next.js
+node_modules/
+.next/
+out/

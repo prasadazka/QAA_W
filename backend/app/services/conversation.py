@@ -102,9 +102,9 @@ def escalate_conversation(conversation_id, user_id, reason: str = None) -> dict:
     with get_db() as conn:
         cur = conn.cursor()
 
-        # Update conversation status
+        # Update conversation status + escalated_at
         cur.execute(
-            "UPDATE conversations SET status = 'waiting_agent' WHERE id = %s",
+            "UPDATE conversations SET status = 'waiting_agent', escalated_at = NOW(), escalation_reason = 'user_requested' WHERE id = %s",
             (conversation_id,),
         )
 
@@ -140,6 +140,32 @@ def escalate_conversation(conversation_id, user_id, reason: str = None) -> dict:
         "escalation_reason": reason,
         "message_history": "\n".join(history_lines),
     }
+
+
+def create_escalation_ticket(conversation_id, user_id, channel: str = "whatsapp_registration",
+                             reason: str = None, last_message: str = None):
+    """Create a ticket when a conversation is escalated."""
+    ticket_id = uuid.uuid4()
+    subject = f"Escalation: {last_message[:100]}" if last_message else "User requested agent"
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        # Skip if ticket already exists
+        cur.execute(
+            "SELECT id FROM tickets WHERE conversation_id = %s AND status NOT IN ('resolved','closed')",
+            (conversation_id,),
+        )
+        if cur.fetchone():
+            return None
+
+        cur.execute("""
+            INSERT INTO tickets (id, conversation_id, user_id, department, status,
+                                 priority, subject, channel, escalation_reason)
+            VALUES (%s, %s, %s, 'registration', 'open', 'medium', %s, %s, 'user_requested')
+        """, (ticket_id, conversation_id, user_id, subject, channel))
+
+    logger.info(f"Created ticket {ticket_id} for conversation {conversation_id}")
+    return ticket_id
 
 
 def log_webhook(direction: str, channel: str, payload: dict, status_code: int = None, error: str = None):
