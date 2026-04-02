@@ -34,7 +34,31 @@ WELCOME_BODY = (
 WELCOME_BUTTONS = [
     {"id": "menu_programs", "title": "Programs & Courses"},
     {"id": "menu_admission", "title": "Admission & Fees"},
-    {"id": "menu_info", "title": "Contact & Info"},
+    {"id": "menu_contact", "title": "Contact Us"},
+]
+
+CONTACT_MSG = (
+    "Qatar Aeronautical Academy\n"
+    "أكاديمية قطر للطيران\n\n"
+    "Phone / الهاتف:\n"
+    "+974 4440 8888\n\n"
+    "Admissions / القبول:\n"
+    "+974 4440 8873\n"
+    "+974 4440 8858\n"
+    "+974 4440 8869\n\n"
+    "Email / البريد الإلكتروني:\n"
+    "Info@qaa.edu.qa\n\n"
+    "Address / العنوان:\n"
+    "Al Khulaifat Area, Doha, Qatar\n"
+    "P.O. Box 4050\n\n"
+    "Type 'menu' for more options.\n"
+    "اكتب 'menu' للمزيد من الخيارات."
+)
+
+MORE_INFO_BUTTONS = [
+    {"id": "menu_about", "title": "About QAA"},
+    {"id": "menu_facilities", "title": "Facilities & Fleet"},
+    {"id": "menu_careers", "title": "Careers & More"},
 ]
 
 # ── Menu Definitions ─────────────────────────────────────────
@@ -83,20 +107,6 @@ ADMISSION_SECTIONS = [
     },
 ]
 
-INFO_SECTIONS = [
-    {
-        "title": "Academy Info",
-        "rows": [
-            {"id": "q_about", "title": "About QAA", "description": "History & overview"},
-            {"id": "q_facilities", "title": "Campus & Facilities", "description": "Labs, library, workshops"},
-            {"id": "q_fleet", "title": "Aircraft & Simulators", "description": "DA40, DA42, A320 sim"},
-            {"id": "q_accreditation", "title": "Accreditations", "description": "EASA, ICAO, FAA"},
-            {"id": "q_careers", "title": "Career Opportunities", "description": "Jobs after graduation"},
-            {"id": "q_contact", "title": "Contact QAA", "description": "Phone, email, address"},
-        ],
-    },
-]
-
 # Map list item IDs to KB search queries
 MENU_QUERIES = {
     "q_pilot": "Tell me about the pilot training program",
@@ -117,12 +127,6 @@ MENU_QUERIES = {
     "q_scholarships": "Are there scholarships available",
     "q_accommodation": "Does QAA have accommodation or housing",
     "q_intake": "What are the intake periods",
-    "q_about": "What is Qatar Aeronautical Academy",
-    "q_facilities": "What are the campus facilities",
-    "q_fleet": "What aircraft does QAA have",
-    "q_accreditation": "What accreditations does QAA hold",
-    "q_careers": "What career opportunities are available after graduation",
-    "q_contact": "How can I contact QAA",
 }
 
 NO_MATCH_MSG = (
@@ -225,15 +229,36 @@ async def process_message(payload: dict):
             ai_intent = "menu_admission"
             reply_text = "[Admission menu]"
 
-        elif button_id == "menu_info":
-            result = await send_interactive_list(
+        elif button_id == "menu_contact":
+            await send_text_message(phone, CONTACT_MSG)
+            result = await send_interactive_buttons(
                 phone,
-                "Choose a topic:\nاختر موضوعاً:",
-                "View Info",
-                INFO_SECTIONS,
+                "Want to know more about QAA?\nهل تريد معرفة المزيد عن الأكاديمية؟",
+                MORE_INFO_BUTTONS,
             )
-            ai_intent = "menu_info"
-            reply_text = "[Info menu]"
+            ai_intent = "contact_info"
+            reply_text = CONTACT_MSG
+
+        elif button_id == "menu_about":
+            language = _detect_language(content)
+            reply_text, ai_intent, ai_confidence, ai_matched_faq_id = await _answer_from_kb(
+                "What is Qatar Aeronautical Academy", language,
+            )
+            result = await send_text_message(phone, reply_text)
+
+        elif button_id == "menu_facilities":
+            language = _detect_language(content)
+            reply_text, ai_intent, ai_confidence, ai_matched_faq_id = await _answer_from_kb(
+                "What are the campus facilities and aircraft fleet", language,
+            )
+            result = await send_text_message(phone, reply_text)
+
+        elif button_id == "menu_careers":
+            language = _detect_language(content)
+            reply_text, ai_intent, ai_confidence, ai_matched_faq_id = await _answer_from_kb(
+                "What career opportunities are available after graduation", language,
+            )
+            result = await send_text_message(phone, reply_text)
 
         # ── 3. List item selection → KB + LLM answer ─────────
         elif list_id and list_id in MENU_QUERIES:
