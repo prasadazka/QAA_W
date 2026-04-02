@@ -220,6 +220,46 @@ async def my_conversations(user: dict = Depends(get_current_user)):
     ]
 
 
+@router.get("/conversations/history")
+async def my_history(user: dict = Depends(get_current_user)):
+    """Return recently resolved conversations handled by this agent."""
+    agent_id = user.get("agent_id")
+    if not agent_id:
+        return []
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT c.id, c.status, c.message_count, c.updated_at,
+                   u.phone_number, u.display_name,
+                   t.ticket_number, t.priority::text,
+                   (SELECT content FROM messages WHERE conversation_id = c.id
+                    ORDER BY created_at DESC LIMIT 1) AS last_message
+            FROM conversations c
+            JOIN users u ON u.id = c.user_id
+            LEFT JOIN tickets t ON t.conversation_id = c.id
+            WHERE c.agent_id = %s AND c.status = 'resolved'
+            ORDER BY c.updated_at DESC
+            LIMIT 20
+        """, (agent_id,))
+        rows = cur.fetchall()
+
+    return [
+        {
+            "conversation_id": str(r[0]),
+            "status": r[1],
+            "message_count": r[2],
+            "updated_at": str(r[3]),
+            "phone": r[4],
+            "name": r[5] or "Unknown",
+            "ticket_number": r[6],
+            "priority": r[7] or "medium",
+            "last_message": (r[8] or "")[:120],
+        }
+        for r in rows
+    ]
+
+
 # ── Conversation Messages ───────────────────────────────────
 
 @router.get("/conversations/{conversation_id}/messages")

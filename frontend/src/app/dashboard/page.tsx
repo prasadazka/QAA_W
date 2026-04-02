@@ -38,6 +38,7 @@ export default function DashboardPage() {
   const [conversations, setConversations] = useState<AssignedConversation[]>([]);
   const [agents, setAgents] = useState<AgentMetric[]>([]);
   const [myStats, setMyStats] = useState<MyStats | null>(null);
+  const [history, setHistory] = useState<Conversation[]>([]);
   const [picking, setPicking] = useState<string | null>(null);
 
   const isAdminOrSup = user?.role === "admin" || user?.role === "supervisor";
@@ -45,13 +46,15 @@ export default function DashboardPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [q, convs, stats] = await Promise.all([
+        const [q, convs, stats, hist] = await Promise.all([
           api.get<QueueItem[]>("/admin/api/queue"),
           api.get<Conversation[]>("/admin/api/conversations"),
           api.get<MyStats>("/admin/api/me/stats").catch(() => null),
+          api.get<Conversation[]>("/admin/api/conversations/history").catch(() => []),
         ]);
         setQueue(q);
         setMyStats(stats);
+        setHistory(hist);
         setConversations((prev) => {
           const summaryMap = new Map(prev.map(c => [c.conversation_id, c.summary]));
           return convs.map(c => ({
@@ -245,6 +248,46 @@ export default function DashboardPage() {
           ))
         )}
       </div>
+
+      {/* My Resolved History */}
+      {history.length > 0 && (
+        <>
+          <h3 className="text-lg font-semibold text-qaa-navy-900 mb-3">My Resolved History</h3>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-8">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-left">
+                  <th className="px-4 py-2.5 font-semibold text-gray-600">User</th>
+                  <th className="px-4 py-2.5 font-semibold text-gray-600">Phone</th>
+                  <th className="px-4 py-2.5 font-semibold text-gray-600">Last Message</th>
+                  <th className="px-4 py-2.5 font-semibold text-gray-600 text-center">Messages</th>
+                  <th className="px-4 py-2.5 font-semibold text-gray-600">Resolved</th>
+                  <th className="px-4 py-2.5 font-semibold text-gray-600"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {history.map((h) => (
+                  <tr key={h.conversation_id} className="hover:bg-gray-50 transition">
+                    <td className="px-4 py-2.5 font-medium text-qaa-navy-900">{h.name}</td>
+                    <td className="px-4 py-2.5 text-gray-500">{h.phone}</td>
+                    <td className="px-4 py-2.5 text-gray-500 max-w-[200px] truncate">{h.last_message}</td>
+                    <td className="px-4 py-2.5 text-center text-gray-600">{h.message_count}</td>
+                    <td className="px-4 py-2.5 text-gray-400 text-xs">{timeAgo(h.updated_at)}</td>
+                    <td className="px-4 py-2.5">
+                      <Link
+                        href={`/conversations/${h.conversation_id}`}
+                        className="text-xs text-qaa-navy-500 hover:underline"
+                      >
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {/* Agent Performance — admin/supervisor only */}
       {isAdminOrSup && agents.length > 0 && (
