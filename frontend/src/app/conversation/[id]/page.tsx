@@ -5,6 +5,32 @@ import { useParams, useRouter } from "next/navigation";
 import ProtectedLayout from "@/components/ProtectedLayout";
 import { api, Message, ConversationDetail } from "@/lib/api";
 
+// Render interactive message placeholders as styled tags
+function MessageContent({ content }: { content: string }) {
+  const menuMatch = content.match(/^\[(.+?)\s*menu\]$/i);
+  if (menuMatch) {
+    return (
+      <div className="flex items-center gap-2">
+        <svg className="w-4 h-4 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+        <span className="text-sm italic opacity-80">Sent {menuMatch[1]} menu</span>
+      </div>
+    );
+  }
+  if (content === "[interactive]") {
+    return (
+      <div className="flex items-center gap-2">
+        <svg className="w-4 h-4 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+        <span className="text-sm italic opacity-80">Sent interactive message</span>
+      </div>
+    );
+  }
+  return <p className="text-sm whitespace-pre-wrap">{content}</p>;
+}
+
 interface AvailableAgent {
   agent_id: string;
   name: string;
@@ -226,7 +252,7 @@ export default function ConversationPage() {
                       : "bg-qaa-gold-100 text-qaa-navy-900 border border-qaa-gold-300"
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  <MessageContent content={msg.content} />
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-[10px] opacity-60">
                       {new Date(msg.created_at).toLocaleTimeString([], {
