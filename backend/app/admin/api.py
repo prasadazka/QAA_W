@@ -349,8 +349,8 @@ async def conversation_summary(conversation_id: str, user: dict = Depends(get_cu
     )
 
     try:
-        from app.services.llm import generate_response
-        summary = await generate_response(prompt, "", "en")
+        from app.services.llm import generate_summary
+        summary = await generate_summary(prompt)
         if summary:
             return {"summary": summary}
     except Exception as e:

@@ -128,3 +128,42 @@ async def generate_response(
         return None
 
     return candidates[0]["content"]["parts"][0]["text"].strip()
+
+
+async def generate_summary(prompt: str) -> str | None:
+    """Generate a plain-text summary using Gemini (no WhatsApp formatting)."""
+    token = await _get_access_token()
+
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "systemInstruction": {
+            "parts": [{"text": "You are an internal assistant that writes brief, clear summaries for support agents. Write in plain English only. No Arabic. No markdown. No bullet points. Just 2-3 concise sentences."}]
+        },
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 200,
+            "topP": 0.9,
+        },
+    }
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            GEMINI_URL,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=settings.LLM_API_TIMEOUT,
+        )
+
+    if resp.status_code != 200:
+        logger.error(f"Gemini summary error: {resp.status_code} {resp.text}")
+        return None
+
+    data = resp.json()
+    candidates = data.get("candidates", [])
+    if not candidates:
+        return None
+
+    return candidates[0]["content"]["parts"][0]["text"].strip()
