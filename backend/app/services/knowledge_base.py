@@ -1,20 +1,23 @@
 import logging
+from app.core.config import settings
 from app.core.database import get_db
 from app.services.embeddings import get_embedding
 
 logger = logging.getLogger(__name__)
 
 
-async def search_kb(query: str, channel: str = "whatsapp_registration", limit: int = 3) -> list[dict]:
-    """Search knowledge base using vector similarity (pgvector + Vertex AI).
-
-    Falls back to keyword search if embedding fails.
-    """
+async def search_kb(
+    query: str,
+    channel: str = None,
+    limit: int = None,
+) -> list[dict]:
+    """Search KB using vector similarity, keyword fallback."""
+    channel = channel or settings.DEFAULT_CHANNEL
+    limit = limit or settings.SEARCH_RESULT_LIMIT
     query = query.strip()
     if not query:
         return []
 
-    # Try vector search first
     try:
         query_embedding = await get_embedding(query)
         results = _vector_search(query_embedding, channel, limit)
@@ -23,12 +26,11 @@ async def search_kb(query: str, channel: str = "whatsapp_registration", limit: i
     except Exception as e:
         logger.warning(f"Vector search failed, falling back to keyword: {e}")
 
-    # Fallback: keyword search
     return _keyword_search(query, channel, limit)
 
 
 def _vector_search(query_embedding: list[float], channel: str, limit: int) -> list[dict]:
-    """Search using cosine similarity on pgvector embeddings."""
+    """Cosine similarity search via pgvector."""
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -50,12 +52,10 @@ def _vector_search(query_embedding: list[float], channel: str, limit: int) -> li
             LIMIT %s
         """, (str(query_embedding), channel, str(query_embedding), limit))
 
-        rows = cur.fetchall()
         results = []
-        for row in rows:
+        for row in cur.fetchall():
             similarity = row[7]
-            # Only include results with similarity > 0.5
-            if similarity < 0.5:
+            if similarity < settings.SIMILARITY_THRESHOLD:
                 continue
             results.append({
                 "id": row[0],
@@ -67,7 +67,6 @@ def _vector_search(query_embedding: list[float], channel: str, limit: int) -> li
                 "category_ar": row[6],
                 "score": round(similarity * 10, 1),
             })
-            # Update hit count
             cur.execute(
                 "UPDATE kb_entries SET hit_count = hit_count + 1, last_hit_at = NOW() WHERE id = %s",
                 (row[0],),
@@ -124,23 +123,6 @@ def _keyword_search(query: str, channel: str, limit: int) -> list[dict]:
                     (row[0],),
                 )
         return results
-
-
-def get_categories(channel: str = "whatsapp_registration") -> list[dict]:
-    """Get all active KB categories for a channel."""
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT id, name_en, name_ar, description_en, description_ar
-               FROM kb_categories WHERE is_active = TRUE AND channel = %s
-               ORDER BY sort_order""",
-            (channel,),
-        )
-        return [
-            {"id": r[0], "name_en": r[1], "name_ar": r[2],
-             "description_en": r[3], "description_ar": r[4]}
-            for r in cur.fetchall()
-        ]
 
 
 def format_kb_response(results: list[dict]) -> str:

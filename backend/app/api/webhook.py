@@ -7,7 +7,8 @@ from app.services.conversation import (
     save_message,
     log_webhook,
 )
-from app.services.knowledge_base import search_kb, format_kb_response
+from app.services.knowledge_base import search_kb
+from app.services.llm import generate_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -15,7 +16,7 @@ router = APIRouter()
 GREETING_TRIGGERS = {"hi", "hello", "hey", "start", "menu", "مرحبا", "السلام عليكم", "مرحبًا", "هلا"}
 
 WELCOME_MSG = (
-    "Welcome to Qatar Aeronautical Academy! 🎓\n"
+    "Welcome to Qatar Aeronautical Academy!\n"
     "مرحبًا بكم في أكاديمية قطر للطيران!\n\n"
     "How can I help you today?\n"
     "كيف يمكنني مساعدتك اليوم؟\n\n"
@@ -25,8 +26,8 @@ WELCOME_MSG = (
     "- Fees & Registration\n"
     "- Facilities & Fleet\n"
     "- Contact Information\n\n"
-    "⚠️ AI assistant. For official decisions, contact the department directly.\n"
-    "⚠️ مساعد ذكاء اصطناعي. للقرارات الرسمية، اتصل بالقسم مباشرة."
+    "For official decisions, contact the department directly.\n"
+    "للقرارات الرسمية، اتصل بالقسم مباشرة."
 )
 
 NO_MATCH_MSG = (
@@ -39,9 +40,23 @@ NO_MATCH_MSG = (
     "- Fees / الرسوم\n"
     "- Contact / الاتصال\n"
     "- Facilities / المرافق\n\n"
-    "Type 'menu' for options.\n"
-    "اكتب 'menu' للخيارات."
+    "Type 'hi' for the main menu.\n"
+    "اكتب 'hi' للقائمة الرئيسية."
 )
+
+
+def _detect_language(text: str) -> str:
+    """Simple language detection based on Arabic character presence."""
+    arabic_chars = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
+    return "ar" if arabic_chars > len(text) * 0.3 else "en"
+
+
+def _build_kb_context(results: list[dict]) -> str:
+    """Build clean context string from KB results for LLM."""
+    parts = []
+    for r in results:
+        parts.append(f"Q: {r['question_en']}\nA: {r['answer_en']}")
+    return "\n\n".join(parts)
 
 
 async def process_message(payload: dict):
@@ -70,7 +85,6 @@ async def process_message(payload: dict):
             whatsapp_message_id=msg.get("message_id"),
         )
 
-        # Generate response
         ai_intent = None
         ai_confidence = None
         ai_matched_faq_id = None
@@ -79,21 +93,28 @@ async def process_message(payload: dict):
             reply = WELCOME_MSG
             ai_intent = "greeting"
         else:
-            # All queries go through KB (vector + keyword search)
-            kb_results = await search_kb(content, "whatsapp_registration")
-            kb_reply = format_kb_response(kb_results)
+            language = _detect_language(content)
+            kb_results = await search_kb(content)
 
-            if kb_reply:
-                reply = kb_reply
-                ai_intent = "kb_match"
+            if kb_results:
+                kb_context = _build_kb_context(kb_results)
                 ai_confidence = min(kb_results[0]["score"] / 10.0, 1.0)
                 ai_matched_faq_id = kb_results[0]["id"]
+
+                llm_reply = await generate_response(content, kb_context, language)
+
+                if llm_reply:
+                    reply = llm_reply
+                    ai_intent = "llm_response"
+                else:
+                    # LLM failed — use best KB result as fallback
+                    reply = kb_results[0]["answer_en"]
+                    ai_intent = "kb_fallback"
             else:
                 reply = NO_MATCH_MSG
                 ai_intent = "no_match"
                 ai_confidence = 0.0
 
-        # Send reply
         result = await send_text_message(phone, reply)
 
         wa_msg_id = None

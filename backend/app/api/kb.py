@@ -4,6 +4,7 @@ import re
 import uuid
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query
+from app.core.config import settings
 from app.core.database import get_db
 from app.services.embeddings import get_embeddings
 
@@ -43,26 +44,36 @@ def _extract_rows_from_excel(content: bytes) -> list[dict]:
     return rows
 
 
-def _chunk_text(text: str, chunk_size: int = 500) -> list[str]:
-    """Split text into chunks by paragraphs/sections, max chunk_size chars."""
+def _clean_markdown(text: str) -> str:
+    """Strip markdown formatting for clean plain-text storage."""
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)  # headers
+    text = re.sub(r'\*{1,2}(.+?)\*{1,2}', r'\1', text)  # bold/italic
+    text = re.sub(r'^\s*[-*]\s+', '- ', text, flags=re.MULTILINE)  # normalize bullets
+    text = re.sub(r'^\s*\d+\.\d+\s+', '', text, flags=re.MULTILINE)  # section numbers like "1.1 "
+    text = re.sub(r'^---+$', '', text, flags=re.MULTILINE)  # horizontal rules
+    return text.strip()
+
+
+def _chunk_text(text: str) -> list[str]:
+    """Split text into clean chunks by paragraphs/sections."""
     sections = re.split(r'\n{2,}|(?=^#{1,3}\s)', text, flags=re.MULTILINE)
     chunks = []
     current = ""
 
     for section in sections:
-        section = section.strip()
+        section = _clean_markdown(section)
         if not section:
             continue
-        if len(current) + len(section) > chunk_size and current:
+        if len(current) + len(section) > settings.CHUNK_SIZE and current:
             chunks.append(current.strip())
             current = section
         else:
-            current = f"{current}\n\n{section}" if current else section
+            current = f"{current}\n{section}" if current else section
 
     if current.strip():
         chunks.append(current.strip())
 
-    return [c for c in chunks if len(c) > 20]
+    return [c for c in chunks if len(c) > settings.CHUNK_MIN_LENGTH]
 
 
 def _get_or_create_category(cur, doc_name: str, channel: str) -> str:
@@ -200,7 +211,7 @@ async def _process_document_file(filename: str, content: bytes, channel: str, or
             title = lines[0].strip().lstrip("#").strip()[:200]
             body = lines[1].strip() if len(lines) > 1 else chunk
 
-            keywords = [w.lower() for w in re.findall(r'\b[a-zA-Z]{3,}\b', title)][:8]
+            keywords = [w.lower() for w in re.findall(r'\b[a-zA-Z]{3,}\b', title)][:settings.CHUNK_MAX_KEYWORDS]
 
             cur.execute(
                 """INSERT INTO kb_entries

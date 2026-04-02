@@ -1,0 +1,115 @@
+import logging
+import httpx
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+GEMINI_URL = (
+    f"https://{settings.GCP_REGION}-aiplatform.googleapis.com/v1/"
+    f"projects/{settings.GCP_PROJECT_ID}/locations/{settings.GCP_REGION}/"
+    f"publishers/google/models/{settings.LLM_MODEL}:generateContent"
+)
+
+SYSTEM_PROMPT = """You are the official AI assistant for Qatar Aeronautical Academy (QAA).
+
+ROLE:
+- Answer questions about QAA using ONLY the provided context
+- Be professional, concise, and helpful
+- If the context doesn't contain the answer, say so honestly
+
+RESPONSE FORMAT (WhatsApp):
+- Reply in English first, then Arabic translation below
+- Use plain text only — no markdown, no headers, no bold, no bullets with #
+- Use simple bullet points with • or - for lists
+- Keep answers under 300 words
+- Add line breaks for readability
+- Never include raw section numbers like "1.1" or "## headers"
+
+TONE:
+- Welcoming and professional
+- Represent QAA's motto: "Excellence Becomes Reality"
+- For official decisions (admission, fees, certification), always direct users to contact QAA directly
+
+LANGUAGE:
+- Detect user language: if Arabic, lead with Arabic then English
+- If English, lead with English then Arabic
+- Always provide both languages
+
+STRICT RULES:
+- NEVER make up information not in the context
+- NEVER include markdown formatting in the reply
+- If asked about something outside QAA, politely redirect
+- Add disclaimer for official/legal matters"""
+
+
+async def _get_access_token() -> str:
+    """Get GCP access token from metadata server or local gcloud."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "http://metadata.google.internal/computeMetadata/v1/"
+                "instance/service-accounts/default/token",
+                headers={"Metadata-Flavor": "Google"},
+                timeout=5.0,
+            )
+            if resp.status_code == 200:
+                return resp.json()["access_token"]
+    except Exception:
+        pass
+
+    import subprocess
+    result = subprocess.run(
+        ["gcloud", "auth", "print-access-token"],
+        capture_output=True, text=True, timeout=10,
+    )
+    return result.stdout.strip()
+
+
+async def generate_response(user_query: str, kb_context: str, language: str = "auto") -> str:
+    """Generate a formatted WhatsApp reply using Gemini."""
+    token = await _get_access_token()
+
+    user_message = (
+        f"User question: {user_query}\n\n"
+        f"Context from knowledge base:\n{kb_context}\n\n"
+        f"User language hint: {language}"
+    )
+
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": user_message}],
+            }
+        ],
+        "systemInstruction": {
+            "parts": [{"text": SYSTEM_PROMPT}]
+        },
+        "generationConfig": {
+            "temperature": settings.LLM_TEMPERATURE,
+            "maxOutputTokens": settings.LLM_MAX_TOKENS,
+            "topP": 0.9,
+        },
+    }
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            GEMINI_URL,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=settings.LLM_API_TIMEOUT,
+        )
+
+    if resp.status_code != 200:
+        logger.error(f"Gemini error: {resp.status_code} {resp.text}")
+        return None
+
+    data = resp.json()
+    candidates = data.get("candidates", [])
+    if not candidates:
+        return None
+
+    return candidates[0]["content"]["parts"][0]["text"].strip()
