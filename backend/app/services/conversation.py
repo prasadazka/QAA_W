@@ -51,17 +51,20 @@ def get_or_create_conversation(user_id, channel: str = "whatsapp_registration") 
 
 def save_message(conversation_id, direction: str, content: str, message_type: str = "text",
                  whatsapp_message_id: str = None, ai_confidence: float = None,
-                 ai_intent: str = None, ai_matched_faq_id=None) -> uuid.UUID:
+                 ai_intent: str = None, ai_matched_faq_id=None,
+                 sender_name: str = None) -> uuid.UUID:
     """Save a message to the database."""
     msg_id = uuid.uuid4()
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(
             """INSERT INTO messages (id, conversation_id, direction, message_type, content,
-                                     whatsapp_message_id, ai_confidence, ai_intent, ai_matched_faq_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                                     whatsapp_message_id, ai_confidence, ai_intent, ai_matched_faq_id,
+                                     sender_name)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (msg_id, conversation_id, direction, message_type, content,
-             whatsapp_message_id, ai_confidence, ai_intent, ai_matched_faq_id),
+             whatsapp_message_id, ai_confidence, ai_intent, ai_matched_faq_id,
+             sender_name),
         )
         # Update message count
         cur.execute(

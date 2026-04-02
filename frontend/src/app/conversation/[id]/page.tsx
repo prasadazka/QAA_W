@@ -243,37 +243,50 @@ export default function ConversationPage() {
 
           {/* Messages */}
           <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-qaa-navy-50">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.direction === "inbound" ? "justify-start" : "justify-end"}`}
-              >
-                <div
-                  className={`max-w-[70%] rounded-xl px-4 py-2.5 ${
+            {messages.map((msg) =>
+              msg.direction === "system" ? (
+                <div key={msg.id} className="flex justify-center">
+                  <div className="bg-gray-100 border border-gray-200 rounded-lg px-4 py-2 text-xs text-gray-500 flex items-center gap-2">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d={
+                        msg.ai_intent === "transfer"
+                          ? "M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
+                          : "M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      } />
+                    </svg>
+                    {msg.content}
+                    <span className="opacity-60">
+                      {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div key={msg.id} className={`flex ${msg.direction === "inbound" ? "justify-start" : "justify-end"}`}>
+                  <div className={`max-w-[70%] rounded-xl px-4 py-2.5 ${
                     msg.direction === "inbound"
                       ? "bg-white border border-gray-200 text-gray-800"
                       : msg.ai_intent === "agent_reply"
                       ? "bg-qaa-navy-500 text-white"
                       : "bg-qaa-gold-100 text-qaa-navy-900 border border-qaa-gold-300"
-                  }`}
-                >
-                  <MessageContent content={msg.content} />
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] opacity-60">
-                      {new Date(msg.created_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    {msg.ai_intent && msg.direction === "outbound" && (
-                      <span className="text-[10px] opacity-60">
-                        {msg.ai_intent === "agent_reply" ? "Agent" : "Bot"}
-                      </span>
+                  }`}>
+                    {msg.sender_name && msg.ai_intent === "agent_reply" && (
+                      <p className="text-[10px] font-semibold opacity-70 mb-0.5">{msg.sender_name}</p>
                     )}
+                    <MessageContent content={msg.content} />
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] opacity-60">
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      {msg.direction === "outbound" && (
+                        <span className="text-[10px] opacity-60">
+                          {msg.ai_intent === "agent_reply" ? "Agent" : "Bot"}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            )}
           </div>
 
           {/* Reply Box */}

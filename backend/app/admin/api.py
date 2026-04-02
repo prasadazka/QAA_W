@@ -190,14 +190,14 @@ async def get_messages(conversation_id: str, after: str = None, user: dict = Dep
 
         if after:
             cur.execute("""
-                SELECT id, direction::text, message_type::text, content, ai_intent, ai_confidence, created_at
+                SELECT id, direction::text, message_type::text, content, ai_intent, ai_confidence, created_at, sender_name
                 FROM messages
                 WHERE conversation_id = %s AND created_at > %s
                 ORDER BY created_at ASC
             """, (conversation_id, after))
         else:
             cur.execute("""
-                SELECT id, direction::text, message_type::text, content, ai_intent, ai_confidence, created_at
+                SELECT id, direction::text, message_type::text, content, ai_intent, ai_confidence, created_at, sender_name
                 FROM messages
                 WHERE conversation_id = %s
                 ORDER BY created_at ASC
@@ -213,6 +213,7 @@ async def get_messages(conversation_id: str, after: str = None, user: dict = Dep
             "ai_intent": r[4],
             "ai_confidence": r[5],
             "created_at": str(r[6]),
+            "sender_name": r[7],
         }
         for r in rows
     ]
@@ -290,7 +291,7 @@ async def agent_reply(conversation_id: str, request: Request, user: dict = Depen
     if isinstance(result, dict) and "messages" in result:
         wa_msg_id = result["messages"][0].get("id")
 
-    # Save message
+    # Save message with agent name
     from app.services.conversation import save_message
     save_message(
         conversation_id=conversation_id,
@@ -299,6 +300,7 @@ async def agent_reply(conversation_id: str, request: Request, user: dict = Depen
         message_type="text",
         whatsapp_message_id=wa_msg_id,
         ai_intent="agent_reply",
+        sender_name=user.get("name"),
     )
 
     return {"status": "sent", "whatsapp_message_id": wa_msg_id}
@@ -415,6 +417,14 @@ async def transfer_conversation(conversation_id: str, request: Request, user: di
                 (current_agent_id,),
             )
 
+        # System message in chat
+        cur.execute("""
+            INSERT INTO messages (id, conversation_id, direction, message_type, content, ai_intent, sender_name)
+            VALUES (%s, %s, 'system', 'system', %s, 'transfer', %s)
+        """, (str(uuid.uuid4()), conversation_id,
+              f"Conversation transferred from {user.get('name', 'Unknown')} to {target[1]}",
+              user.get("name")))
+
         # Audit log
         cur.execute("""
             INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, new_value)
@@ -502,6 +512,14 @@ async def resolve_conversation(conversation_id: str, request: Request, user: dic
                 "UPDATE agents SET active_chats = GREATEST(active_chats - 1, 0) WHERE id = %s",
                 (agent_id,),
             )
+
+        # System message in chat
+        cur.execute("""
+            INSERT INTO messages (id, conversation_id, direction, message_type, content, ai_intent, sender_name)
+            VALUES (%s, %s, 'system', 'system', %s, 'resolve', %s)
+        """, (str(uuid.uuid4()), conversation_id,
+              f"Conversation resolved by {user.get('name', 'Unknown')}",
+              user.get("name")))
 
         # Audit log
         cur.execute("""

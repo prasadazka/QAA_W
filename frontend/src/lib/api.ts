@@ -163,6 +163,7 @@ export interface Message {
   ai_intent: string | null;
   ai_confidence: number | null;
   created_at: string;
+  sender_name: string | null;
 }
 
 export interface ConversationDetail {
