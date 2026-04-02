@@ -241,14 +241,14 @@ async def process_message(payload: dict):
         ai_matched_faq_id = None
         reply_text = None
 
-        # ── 0. Already escalated → inform user ─────────────
-        if conv["status"] in ("waiting_agent", "agent_handling") and content.lower() not in GREETING_TRIGGERS:
-            await send_text_message(phone, ALREADY_ESCALATED_MSG)
-            save_message(
-                conversation_id=conv["id"], direction="outbound",
-                content=ALREADY_ESCALATED_MSG, message_type="text",
-                ai_intent="escalated_reminder",
-            )
+        # ── 0. Already escalated → bot stays silent ─────────────
+        if conv["status"] == "agent_handling" and content.lower() not in GREETING_TRIGGERS:
+            # Agent is handling — just save the message, no bot reply
+            logger.info(f"Agent handling {phone}, saving message silently")
+            return
+
+        if conv["status"] == "waiting_agent" and content.lower() not in GREETING_TRIGGERS:
+            # In queue — remind once, but don't spam on every message
             return
 
         # ── 0b. Escalation request → hand over ─────────────
