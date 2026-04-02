@@ -9,6 +9,8 @@ from app.services.whatsapp import (
 from app.services.conversation import (
     get_or_create_user,
     get_or_create_conversation,
+    get_conversation_history,
+    escalate_conversation,
     save_message,
     log_webhook,
 )
@@ -23,6 +25,28 @@ GREETING_TRIGGERS = {
     "hi", "hello", "hey", "start", "menu", "main menu",
     "مرحبا", "السلام عليكم", "مرحبًا", "هلا",
 }
+
+ESCALATION_TRIGGERS = {
+    "agent", "human", "speak to agent", "talk to human",
+    "real person", "representative", "support",
+    "موظف", "شخص حقيقي", "أريد التحدث مع شخص", "دعم",
+}
+
+ESCALATION_MSG = (
+    "Your conversation has been forwarded to our team.\n"
+    "A representative will contact you shortly.\n\n"
+    "تم تحويل محادثتك إلى فريقنا.\n"
+    "سيتواصل معك أحد الممثلين قريبًا.\n\n"
+    "Thank you for your patience! 🙏\n"
+    "شكرًا لصبرك!"
+)
+
+ALREADY_ESCALATED_MSG = (
+    "Your conversation is already with our team.\n"
+    "Please wait, a representative will respond soon.\n\n"
+    "محادثتك بالفعل مع فريقنا.\n"
+    "يرجى الانتظار، سيرد عليك أحد الممثلين قريبًا."
+)
 
 WELCOME_BODY = (
     "Welcome to Qatar Aeronautical Academy! ✈️\n"
@@ -151,7 +175,9 @@ def _build_kb_context(results: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-async def _answer_from_kb(query: str, language: str = "en") -> tuple[str, str, float, str]:
+async def _answer_from_kb(
+    query: str, language: str = "en", history: list[dict] = None,
+) -> tuple[str, str, float, str]:
     """Search KB + LLM → (reply, intent, confidence, faq_id)."""
     kb_results = await search_kb(query)
 
@@ -162,7 +188,7 @@ async def _answer_from_kb(query: str, language: str = "en") -> tuple[str, str, f
     confidence = min(kb_results[0]["score"] / 10.0, 1.0)
     faq_id = kb_results[0]["id"]
 
-    llm_reply = await generate_response(query, kb_context, language)
+    llm_reply = await generate_response(query, kb_context, language, conversation_history=history)
     if llm_reply:
         return llm_reply, "llm_response", confidence, faq_id
 
@@ -201,6 +227,39 @@ async def process_message(payload: dict):
         ai_confidence = None
         ai_matched_faq_id = None
         reply_text = None
+
+        # ── 0. Already escalated → inform user ─────────────
+        if conv["status"] in ("waiting_agent", "agent_handling") and content.lower() not in GREETING_TRIGGERS:
+            await send_text_message(phone, ALREADY_ESCALATED_MSG)
+            save_message(
+                conversation_id=conv["id"], direction="outbound",
+                content=ALREADY_ESCALATED_MSG, message_type="text",
+                ai_intent="escalated_reminder",
+            )
+            return
+
+        # ── 0b. Escalation request → hand over ─────────────
+        if content.lower() in ESCALATION_TRIGGERS:
+            context = escalate_conversation(conv["id"], user["id"], reason=content)
+            logger.info(f"Escalation for {phone}: {context['escalation_reason']}")
+            result = await send_text_message(phone, ESCALATION_MSG)
+            ai_intent = "escalation"
+            reply_text = ESCALATION_MSG
+
+            wa_msg_id = None
+            if isinstance(result, dict) and "messages" in result:
+                wa_msg_id = result["messages"][0].get("id")
+
+            save_message(
+                conversation_id=conv["id"], direction="outbound",
+                content=reply_text, message_type="text",
+                whatsapp_message_id=wa_msg_id, ai_intent=ai_intent,
+            )
+            log_webhook("outbound", "whatsapp_registration", result, status_code=200)
+            return
+
+        # Fetch conversation history for LLM context
+        history = get_conversation_history(conv["id"], limit=10)
 
         # ── 1. Greeting → Welcome buttons ────────────────────
         if content.lower() in GREETING_TRIGGERS:
@@ -242,21 +301,21 @@ async def process_message(payload: dict):
         elif button_id == "menu_about":
             language = _detect_language(content)
             reply_text, ai_intent, ai_confidence, ai_matched_faq_id = await _answer_from_kb(
-                "What is Qatar Aeronautical Academy", language,
+                "What is Qatar Aeronautical Academy", language, history,
             )
             result = await send_text_message(phone, reply_text)
 
         elif button_id == "menu_facilities":
             language = _detect_language(content)
             reply_text, ai_intent, ai_confidence, ai_matched_faq_id = await _answer_from_kb(
-                "What are the campus facilities and aircraft fleet", language,
+                "What are the campus facilities and aircraft fleet", language, history,
             )
             result = await send_text_message(phone, reply_text)
 
         elif button_id == "menu_careers":
             language = _detect_language(content)
             reply_text, ai_intent, ai_confidence, ai_matched_faq_id = await _answer_from_kb(
-                "What career opportunities are available after graduation", language,
+                "What career opportunities are available after graduation", language, history,
             )
             result = await send_text_message(phone, reply_text)
 
@@ -264,13 +323,13 @@ async def process_message(payload: dict):
         elif list_id and list_id in MENU_QUERIES:
             query = MENU_QUERIES[list_id]
             language = _detect_language(content)
-            reply_text, ai_intent, ai_confidence, ai_matched_faq_id = await _answer_from_kb(query, language)
+            reply_text, ai_intent, ai_confidence, ai_matched_faq_id = await _answer_from_kb(query, language, history)
             result = await send_text_message(phone, reply_text)
 
         # ── 4. Free text → KB + LLM answer ──────────────────
         else:
             language = _detect_language(content)
-            reply_text, ai_intent, ai_confidence, ai_matched_faq_id = await _answer_from_kb(content, language)
+            reply_text, ai_intent, ai_confidence, ai_matched_faq_id = await _answer_from_kb(content, language, history)
             result = await send_text_message(phone, reply_text)
 
         # ── Save outbound message ────────────────────────────
@@ -307,3 +366,45 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
 async def whatsapp_webhook_verify(request: Request):
     """Webhook verification (if needed by provider)."""
     return {"status": "ok"}
+
+
+@router.post("/webhook/resolve-escalation/{conversation_id}")
+async def resolve_escalation(conversation_id: str):
+    """Agent marks escalation as resolved → bot resumes for this user."""
+    from app.core.database import get_db
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE conversations SET status = 'active' WHERE id = %s AND status IN ('waiting_agent', 'agent_handling')",
+            (conversation_id,),
+        )
+        if cur.rowcount == 0:
+            return {"status": "not_found", "message": "No escalated conversation found"}
+    return {"status": "resolved", "conversation_id": conversation_id}
+
+
+@router.get("/webhook/escalated")
+async def list_escalated():
+    """List all conversations waiting for an agent."""
+    from app.core.database import get_db
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT c.id, c.status, c.created_at, u.phone_number, u.display_name
+               FROM conversations c
+               JOIN users u ON u.id = c.user_id
+               WHERE c.status IN ('waiting_agent', 'agent_handling')
+               ORDER BY c.created_at DESC
+               LIMIT 50"""
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "conversation_id": str(r[0]),
+            "status": r[1],
+            "created_at": str(r[2]),
+            "phone": r[3],
+            "name": r[4],
+        }
+        for r in rows
+    ]

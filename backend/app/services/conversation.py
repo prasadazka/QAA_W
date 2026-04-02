@@ -71,6 +71,77 @@ def save_message(conversation_id, direction: str, content: str, message_type: st
     return msg_id
 
 
+def get_conversation_history(conversation_id, limit: int = 10) -> list[dict]:
+    """Fetch the last N messages for a conversation (oldest first)."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT direction, content, message_type, created_at
+               FROM messages
+               WHERE conversation_id = %s
+               ORDER BY created_at DESC
+               LIMIT %s""",
+            (conversation_id, limit),
+        )
+        rows = cur.fetchall()
+
+    # Reverse so oldest is first (chronological order)
+    messages = []
+    for row in reversed(rows):
+        messages.append({
+            "role": "user" if row[0] == "inbound" else "assistant",
+            "content": row[1] or "",
+            "type": row[2],
+            "timestamp": str(row[3]),
+        })
+    return messages
+
+
+def escalate_conversation(conversation_id, user_id, reason: str = None) -> dict:
+    """Mark conversation as waiting_agent and build context summary for handover."""
+    with get_db() as conn:
+        cur = conn.cursor()
+
+        # Update conversation status
+        cur.execute(
+            "UPDATE conversations SET status = 'waiting_agent' WHERE id = %s",
+            (conversation_id,),
+        )
+
+        # Get user info
+        cur.execute(
+            "SELECT phone_number, display_name, preferred_language FROM users WHERE id = %s",
+            (user_id,),
+        )
+        user_row = cur.fetchone()
+
+        # Get last 20 messages for agent context
+        cur.execute(
+            """SELECT direction, content, ai_intent, created_at
+               FROM messages
+               WHERE conversation_id = %s
+               ORDER BY created_at DESC
+               LIMIT 20""",
+            (conversation_id,),
+        )
+        msg_rows = cur.fetchall()
+
+    # Build context summary
+    history_lines = []
+    for row in reversed(msg_rows):
+        direction = "User" if row[0] == "inbound" else "Bot"
+        history_lines.append(f"[{row[3]}] {direction}: {row[1]}")
+
+    return {
+        "conversation_id": str(conversation_id),
+        "user_phone": user_row[0] if user_row else "",
+        "user_name": user_row[1] if user_row else "",
+        "user_language": user_row[2] if user_row else "en",
+        "escalation_reason": reason,
+        "message_history": "\n".join(history_lines),
+    }
+
+
 def log_webhook(direction: str, channel: str, payload: dict, status_code: int = None, error: str = None):
     """Log raw webhook payload for debugging."""
     with get_db() as conn:

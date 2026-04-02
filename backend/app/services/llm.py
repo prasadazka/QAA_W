@@ -65,23 +65,38 @@ async def _get_access_token() -> str:
     return result.stdout.strip()
 
 
-async def generate_response(user_query: str, kb_context: str, language: str = "auto") -> str:
-    """Generate a formatted WhatsApp reply using Gemini."""
+async def generate_response(
+    user_query: str,
+    kb_context: str,
+    language: str = "auto",
+    conversation_history: list[dict] = None,
+) -> str:
+    """Generate a formatted WhatsApp reply using Gemini with conversation memory."""
     token = await _get_access_token()
 
+    # Build multi-turn contents from conversation history
+    contents = []
+    if conversation_history:
+        for msg in conversation_history[-8:]:  # Last 8 messages max
+            if msg.get("content") and msg["content"] not in ("[interactive]", ""):
+                contents.append({
+                    "role": "user" if msg["role"] == "user" else "model",
+                    "parts": [{"text": msg["content"]}],
+                })
+
+    # Current user message with KB context
     user_message = (
         f"User question: {user_query}\n\n"
         f"Context from knowledge base:\n{kb_context}\n\n"
         f"User language hint: {language}"
     )
+    contents.append({
+        "role": "user",
+        "parts": [{"text": user_message}],
+    })
 
     payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": user_message}],
-            }
-        ],
+        "contents": contents,
         "systemInstruction": {
             "parts": [{"text": SYSTEM_PROMPT}]
         },
