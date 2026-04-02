@@ -301,6 +301,15 @@ def kb_stats(channel: str = Query("whatsapp_registration")):
         return stats
 
 
+@router.get("/enums")
+def check_enums():
+    """Temp: check enum values."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT enum_range(NULL::kb_content_source)")
+        return {"kb_content_source": cur.fetchone()[0]}
+
+
 @router.delete("/clear-all")
 def clear_all(channel: str = Query("whatsapp_registration")):
     """Delete ALL KB entries and categories for a channel."""
