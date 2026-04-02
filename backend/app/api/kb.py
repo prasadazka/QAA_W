@@ -312,6 +312,30 @@ def kb_stats(channel: str = Query("whatsapp_registration")):
         return stats
 
 
+@router.get("/search")
+async def search_test(q: str = Query(...), channel: str = Query("whatsapp_registration")):
+    """Debug: test KB search and see raw similarity scores."""
+    from app.services.embeddings import get_embedding
+    query_embedding = await get_embedding(q)
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT e.question_en, e.answer_en,
+                   1 - (e.embedding <=> %s::vector) AS similarity
+            FROM kb_entries e
+            WHERE e.is_active = TRUE AND e.channel = %s AND e.embedding IS NOT NULL
+            ORDER BY e.embedding <=> %s::vector
+            LIMIT 5
+        """, (str(query_embedding), channel, str(query_embedding)))
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+        for r in rows:
+            r["similarity"] = round(float(r["similarity"]), 4)
+            r["answer_en"] = r["answer_en"][:150] + "..." if len(r["answer_en"]) > 150 else r["answer_en"]
+        return {"query": q, "threshold": settings.SIMILARITY_THRESHOLD, "results": rows}
+
+
 @router.delete("/clear-all")
 def clear_all(channel: str = Query("whatsapp_registration")):
     """Delete ALL KB entries and categories for a channel."""
