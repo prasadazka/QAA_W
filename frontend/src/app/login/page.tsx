@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import Link from "next/link";
 
+const DEMO_ACCOUNTS = [
+  { label: "Admin", name: "Admin", email: "admin@qaa.edu.qa", password: "Admin@2026", role: "admin" },
+  { label: "Supervisor", name: "Fatma Al-Thani", email: "fatma@qaa.edu.qa", password: "Fatma@2026", role: "supervisor" },
+  { label: "Agent", name: "Khalid Al-Mansouri", email: "khalid@qaa.edu.qa", password: "Khalid@2026", role: "agent" },
+  { label: "Agent", name: "Noura Al-Sulaiti", email: "noura@qaa.edu.qa", password: "Noura@2026", role: "agent" },
+];
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,6 +19,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
+
+  const fillCredentials = (acct: typeof DEMO_ACCOUNTS[number]) => {
+    setEmail(acct.email);
+    setPassword(acct.password);
+    setError("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,6 +101,44 @@ export default function LoginPage() {
                 {loading ? "Signing in..." : "Sign In"}
               </button>
             </form>
+
+            {/* Demo Accounts */}
+            <div className="mt-6 pt-5 border-t border-gray-100">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Quick Login — Demo Accounts</p>
+              <div className="space-y-2">
+                {DEMO_ACCOUNTS.map((acct) => (
+                  <button
+                    key={acct.email}
+                    type="button"
+                    onClick={() => fillCredentials(acct)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition border ${
+                      email === acct.email
+                        ? "border-qaa-navy-500 bg-qaa-navy-50"
+                        : "border-gray-100 hover:border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    <span className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                      acct.role === "admin" ? "bg-qaa-gold-500" : acct.role === "supervisor" ? "bg-qaa-navy-500" : "bg-qaa-navy-300"
+                    }`}>
+                      {acct.name.charAt(0)}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-qaa-navy-900 truncate">{acct.name}</p>
+                      <p className="text-[11px] text-gray-400 truncate">{acct.email} / {acct.password}</p>
+                    </div>
+                    <span className={`shrink-0 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full ${
+                      acct.role === "admin"
+                        ? "bg-qaa-gold-100 text-qaa-gold-500"
+                        : acct.role === "supervisor"
+                        ? "bg-purple-50 text-purple-600"
+                        : "bg-blue-50 text-blue-600"
+                    }`}>
+                      {acct.role}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="text-center mt-6">
