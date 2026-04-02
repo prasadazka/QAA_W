@@ -37,4 +37,6 @@ jobs:
         run: ruff check app/
 
       - name: Run tests
+        env:
+          PYTHONPATH: .
         run: pytest tests/ -v
