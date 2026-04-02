@@ -1,7 +1,6 @@
 import uuid
 import json
 import logging
-from datetime import datetime, timezone
 from app.core.database import get_db
 
 logger = logging.getLogger(__name__)

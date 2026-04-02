@@ -75,12 +75,12 @@ async def process_message(payload: dict):
             # For now, echo back with a helpful message
             # This is where AI/KB lookup will plug in later
             reply = (
-                f"Thank you for your question.\n"
-                f"شكرًا على سؤالك.\n\n"
-                f"I'm still learning! A human agent will be able to help you soon.\n"
-                f"ما زلت أتعلم! سيتمكن موظف بشري من مساعدتك قريبًا.\n\n"
-                f"Type 'menu' to see options.\n"
-                f"اكتب 'menu' لعرض الخيارات."
+                "Thank you for your question.\n"
+                "شكرًا على سؤالك.\n\n"
+                "I'm still learning! A human agent will be able to help you soon.\n"
+                "ما زلت أتعلم! سيتمكن موظف بشري من مساعدتك قريبًا.\n\n"
+                "Type 'menu' to see options.\n"
+                "اكتب 'menu' لعرض الخيارات."
             )
 
         # Send reply
