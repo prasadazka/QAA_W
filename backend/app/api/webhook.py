@@ -80,7 +80,7 @@ async def process_message(payload: dict):
             ai_intent = "menu_selection"
         else:
             # Search knowledge base
-            kb_results = search_kb(content, "whatsapp_registration")
+            kb_results = await search_kb(content, "whatsapp_registration")
             kb_reply = format_kb_response(kb_results)
 
             if kb_reply:
