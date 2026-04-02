@@ -12,40 +12,45 @@ from app.services.knowledge_base import search_kb, format_kb_response
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+GREETING_TRIGGERS = {"hi", "hello", "hey", "start", "menu", "مرحبا", "السلام عليكم", "مرحبًا", "هلا"}
+
 WELCOME_MSG = (
     "Welcome to Qatar Aeronautical Academy! 🎓\n"
     "مرحبًا بكم في أكاديمية قطر للطيران!\n\n"
     "How can I help you today?\n"
     "كيف يمكنني مساعدتك اليوم؟\n\n"
-    "Type your question or choose:\n"
-    "1️⃣ Programs & Courses\n"
-    "2️⃣ Admission Requirements\n"
-    "3️⃣ Fees & Scholarships\n"
-    "4️⃣ Application Process\n"
-    "5️⃣ Contact Us\n\n"
-    "⚠️ This is an AI assistant. For official decisions, contact the department directly.\n"
-    "⚠️ هذا مساعد ذكاء اصطناعي. للقرارات الرسمية، اتصل بالقسم مباشرة."
+    "Ask me anything about:\n"
+    "- Programs & Courses\n"
+    "- Admission & Requirements\n"
+    "- Fees & Registration\n"
+    "- Facilities & Fleet\n"
+    "- Contact Information\n\n"
+    "⚠️ AI assistant. For official decisions, contact the department directly.\n"
+    "⚠️ مساعد ذكاء اصطناعي. للقرارات الرسمية، اتصل بالقسم مباشرة."
 )
 
-MENU_RESPONSES = {
-    "1": "📚 *Programs & Courses*\n\nQAA offers:\n• Commercial Pilot License (CPL)\n• Private Pilot License (PPL)\n• Aircraft Maintenance Engineering\n• Air Traffic Control\n• Aviation Management\n\nWhich program interests you? Type the name or ask any question.",
-    "2": "📋 *Admission Requirements*\n\nGeneral requirements:\n• High school certificate (minimum 70%)\n• Valid ID/Passport\n• Medical fitness certificate\n• English proficiency (IELTS 5.0+)\n• Age: 17-35 years\n\nFor specific program requirements, type the program name.",
-    "3": "💰 *Fees & Scholarships*\n\nFee details vary by program. Scholarships available for Qatari nationals.\n\nFor detailed fee structure, please contact:\n📧 registration@qaa.edu.qa\n📞 +974 4454 0000",
-    "4": "📝 *Application Process*\n\n1. Visit qaa.edu.qa\n2. Fill online application form\n3. Submit required documents\n4. Take entrance exam\n5. Medical examination\n6. Receive admission decision\n\nApplication portal: qaa.edu.qa/apply",
-    "5": "📞 *Contact Us*\n\n🏢 Qatar Aeronautical Academy\n📍 Doha, Qatar\n📧 info@qaa.edu.qa\n📞 +974 4454 0000\n🌐 qaa.edu.qa\n\n🕐 Office Hours: Sun-Thu, 7:00 AM - 4:00 PM",
-}
+NO_MATCH_MSG = (
+    "Thank you for your question.\n"
+    "شكرًا على سؤالك.\n\n"
+    "I couldn't find a specific answer. Try asking about:\n"
+    "لم أتمكن من إيجاد إجابة محددة. حاول السؤال عن:\n\n"
+    "- Programs / البرامج\n"
+    "- Admission / القبول\n"
+    "- Fees / الرسوم\n"
+    "- Contact / الاتصال\n"
+    "- Facilities / المرافق\n\n"
+    "Type 'menu' for options.\n"
+    "اكتب 'menu' للخيارات."
+)
 
 
 async def process_message(payload: dict):
     """Background task: process incoming WhatsApp message and reply."""
     try:
-        # Log raw webhook
         log_webhook("inbound", "whatsapp_registration", payload)
 
-        # Parse the message
         msg = parse_incoming_message(payload)
         if not msg:
-            logger.info("No message in webhook payload (status update or other event)")
             return
 
         phone = msg["from"]
@@ -54,11 +59,9 @@ async def process_message(payload: dict):
 
         logger.info(f"Message from {phone}: {content[:100]}")
 
-        # Get or create user & conversation
         user = get_or_create_user(phone, msg.get("name"))
         conv = get_or_create_conversation(user["id"], "whatsapp_registration")
 
-        # Save inbound message
         save_message(
             conversation_id=conv["id"],
             direction="inbound",
@@ -72,14 +75,11 @@ async def process_message(payload: dict):
         ai_confidence = None
         ai_matched_faq_id = None
 
-        if content.lower() in ("hi", "hello", "hey", "start", "menu", "مرحبا", "السلام عليكم", "مرحبًا"):
+        if content.lower() in GREETING_TRIGGERS:
             reply = WELCOME_MSG
             ai_intent = "greeting"
-        elif content in MENU_RESPONSES:
-            reply = MENU_RESPONSES[content]
-            ai_intent = "menu_selection"
         else:
-            # Search knowledge base
+            # All queries go through KB (vector + keyword search)
             kb_results = await search_kb(content, "whatsapp_registration")
             kb_reply = format_kb_response(kb_results)
 
@@ -89,27 +89,13 @@ async def process_message(payload: dict):
                 ai_confidence = min(kb_results[0]["score"] / 10.0, 1.0)
                 ai_matched_faq_id = kb_results[0]["id"]
             else:
-                reply = (
-                    "Thank you for your question.\n"
-                    "شكرًا على سؤالك.\n\n"
-                    "I couldn't find a specific answer. Here are some things I can help with:\n"
-                    "لم أتمكن من إيجاد إجابة محددة. إليك بعض المواضيع التي يمكنني المساعدة فيها:\n\n"
-                    "- Programs & Courses / البرامج والدورات\n"
-                    "- Admission Requirements / متطلبات القبول\n"
-                    "- Fees / الرسوم\n"
-                    "- Contact Info / معلومات الاتصال\n"
-                    "- Facilities & Fleet / المرافق والأسطول\n\n"
-                    "Type 'menu' for quick options.\n"
-                    "اكتب 'menu' للخيارات السريعة."
-                )
+                reply = NO_MATCH_MSG
                 ai_intent = "no_match"
                 ai_confidence = 0.0
-                ai_matched_faq_id = None
 
         # Send reply
         result = await send_text_message(phone, reply)
 
-        # Save outbound message
         wa_msg_id = None
         if "messages" in result:
             wa_msg_id = result["messages"][0].get("id")
@@ -125,7 +111,6 @@ async def process_message(payload: dict):
             ai_matched_faq_id=ai_matched_faq_id,
         )
 
-        # Log outbound
         log_webhook("outbound", "whatsapp_registration", result, status_code=200)
 
     except Exception as e:

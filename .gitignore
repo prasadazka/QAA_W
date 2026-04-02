@@ -3,3 +3,4 @@ cred.txt
 service_account.json
 *.env
 .env.*
+__pycache__/

@@ -2,6 +2,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.webhook import router as webhook_router
+from app.api.kb import router as kb_router
 from app.core.config import settings
 
 logging.basicConfig(
@@ -21,6 +22,7 @@ app.add_middleware(
 
 # Routes
 app.include_router(webhook_router, tags=["webhook"])
+app.include_router(kb_router)
 
 
 @app.get("/")
