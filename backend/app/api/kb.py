@@ -321,17 +321,43 @@ def _chunk_text(text: str, chunk_size: int = 500) -> list[str]:
     return [c for c in chunks if len(c) > 20]  # Skip tiny fragments
 
 
+def _get_or_create_category(cur, doc_name: str, channel: str) -> str:
+    """Auto-create a category from document name if it doesn't exist."""
+    # Clean filename to use as category name
+    name = re.sub(r'\.[^.]+$', '', doc_name)  # remove extension
+    name = re.sub(r'[_\-]+', ' ', name).strip().title()
+    if not name:
+        name = "General"
+
+    # Check if category already exists
+    cur.execute(
+        "SELECT id FROM kb_categories WHERE lower(name_en) = lower(%s) AND channel = %s",
+        (name, channel),
+    )
+    row = cur.fetchone()
+    if row:
+        return row[0]
+
+    # Create new category
+    cat_id = uuid.uuid4()
+    cur.execute(
+        """INSERT INTO kb_categories (id, name_en, name_ar, channel, is_active)
+           VALUES (%s, %s, %s, %s, TRUE)""",
+        (cat_id, name, name, channel),
+    )
+    return cat_id
+
+
 @router.post("/upload")
 async def upload_kb_file(
     file: UploadFile = File(...),
-    category_id: str = Query(...),
     channel: str = Query("whatsapp_registration"),
 ):
-    """Upload file to create KB entries with auto-generated embeddings.
+    """Upload a file to create KB entries with auto-generated embeddings.
 
-    Supported formats:
-    - CSV/Excel: expects columns question_en, question_ar, answer_en, answer_ar (+ optional keywords_en, keywords_ar)
-    - PDF/TXT/MD/DOCX: auto-chunks content into KB entries with embeddings
+    Just upload any supported file — the system handles chunking, categorization, and embedding.
+
+    Supported: .csv, .xlsx, .xls, .pdf, .txt, .md, .docx, .doc
     """
     filename = file.filename.lower()
     if not filename.endswith(SUPPORTED_EXTENSIONS):
@@ -343,13 +369,13 @@ async def upload_kb_file(
 
     # ── Structured files (CSV/Excel) ──
     if filename.endswith((".csv", ".xlsx", ".xls")):
-        return await _process_structured_file(filename, content, category_id, channel)
+        return await _process_structured_file(filename, content, channel, file.filename)
 
     # ── Unstructured files (PDF/TXT/MD/DOCX) ──
-    return await _process_document_file(filename, content, category_id, channel, file.filename)
+    return await _process_document_file(filename, content, channel, file.filename)
 
 
-async def _process_structured_file(filename: str, content: bytes, category_id: str, channel: str):
+async def _process_structured_file(filename: str, content: bytes, channel: str, original_name: str):
     """Process CSV/Excel with Q&A columns."""
     if filename.endswith(".csv"):
         rows = _extract_rows_from_csv(content)
@@ -375,6 +401,8 @@ async def _process_structured_file(filename: str, content: bytes, category_id: s
     created = 0
     with get_db() as conn:
         cur = conn.cursor()
+        category_id = _get_or_create_category(cur, original_name, channel)
+
         for row, emb in zip(rows, embeddings):
             entry_id = uuid.uuid4()
             kw_en = [k.strip() for k in str(row.get("keywords_en", "")).split(",") if k.strip()]
@@ -384,7 +412,7 @@ async def _process_structured_file(filename: str, content: bytes, category_id: s
                 """INSERT INTO kb_entries
                    (id, category_id, question_en, question_ar, answer_en, answer_ar,
                     keywords_en, keywords_ar, channel, source, embedding)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'excel_import', %s)""",
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'file_upload', %s)""",
                 (entry_id, category_id,
                  row["question_en"], row["question_ar"],
                  row["answer_en"], row["answer_ar"],
@@ -395,16 +423,15 @@ async def _process_structured_file(filename: str, content: bytes, category_id: s
 
     return {
         "status": "uploaded",
-        "file": filename,
+        "file": original_name,
         "type": "structured",
         "entries_created": created,
         "embeddings_generated": sum(1 for e in embeddings if e is not None),
     }
 
 
-async def _process_document_file(filename: str, content: bytes, category_id: str, channel: str, original_name: str):
+async def _process_document_file(filename: str, content: bytes, channel: str, original_name: str):
     """Process PDF/TXT/MD/DOCX by chunking and auto-embedding."""
-    # Extract raw text
     if filename.endswith(".pdf"):
         text = _extract_text_from_pdf(content)
     elif filename.endswith((".docx", ".doc")):
@@ -415,40 +442,37 @@ async def _process_document_file(filename: str, content: bytes, category_id: str
     if not text.strip():
         raise HTTPException(400, "Could not extract text from file")
 
-    # Chunk into sections
     chunks = _chunk_text(text)
     if not chunks:
         raise HTTPException(400, "No meaningful content found after parsing")
 
-    # Generate embeddings for all chunks
     try:
         embeddings = await get_embeddings(chunks)
     except Exception as e:
         logger.warning(f"Batch embedding failed: {e}")
         embeddings = [None] * len(chunks)
 
-    # Store each chunk as a KB entry
     created = 0
     with get_db() as conn:
         cur = conn.cursor()
+        category_id = _get_or_create_category(cur, original_name, channel)
+
         for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
             entry_id = uuid.uuid4()
-            # Use first line as question, rest as answer
             lines = chunk.split("\n", 1)
             title = lines[0].strip().lstrip("#").strip()[:200]
             body = lines[1].strip() if len(lines) > 1 else chunk
 
-            # Extract simple keywords from title
             keywords = [w.lower() for w in re.findall(r'\b[a-zA-Z]{3,}\b', title)][:8]
 
             cur.execute(
                 """INSERT INTO kb_entries
                    (id, category_id, question_en, question_ar, answer_en, answer_ar,
                     keywords_en, keywords_ar, channel, source, source_url, embedding)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'manual_entry', %s, %s)""",
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'file_upload', %s, %s)""",
                 (entry_id, category_id,
-                 title, title,  # Same for both languages (source is English doc)
-                 body, body,    # Same for both languages
+                 title, title,
+                 body, body,
                  keywords, [],
                  channel, original_name,
                  str(emb) if emb else None),
@@ -463,6 +487,41 @@ async def _process_document_file(filename: str, content: bytes, category_id: str
         "entries_created": created,
         "embeddings_generated": sum(1 for e in embeddings if e is not None),
     }
+
+
+# ── Documents (uploaded files) ────────────────────────────────
+
+@router.get("/documents")
+def list_documents(channel: str = Query("whatsapp_registration")):
+    """List all uploaded documents with their entry counts."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT source_url, count(*) AS entries,
+                   count(*) FILTER (WHERE embedding IS NOT NULL) AS embedded,
+                   min(created_at) AS uploaded_at
+            FROM kb_entries
+            WHERE channel = %s AND source_url IS NOT NULL
+            GROUP BY source_url
+            ORDER BY min(created_at) DESC
+        """, (channel,))
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+@router.delete("/documents/{doc_name}")
+def delete_document(doc_name: str, channel: str = Query("whatsapp_registration")):
+    """Delete all KB entries created from a specific uploaded file."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM kb_entries WHERE source_url = %s AND channel = %s RETURNING id",
+            (doc_name, channel),
+        )
+        deleted = len(cur.fetchall())
+        if deleted == 0:
+            raise HTTPException(404, "No entries found for this document")
+    return {"status": "deleted", "document": doc_name, "entries_deleted": deleted}
 
 
 # ── Stats ────────────────────────────────────────────────────
