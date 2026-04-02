@@ -65,7 +65,7 @@ jobs:
             --max-instances=3
             --port=8080
             --add-cloudsql-instances=qaaw-492106:me-central1:qaa-db-dev
-            --set-env-vars=ENVIRONMENT=dev,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},GCP_REGION=${{ env.GCP_REGION }},DB_HOST=34.18.37.125,DB_PORT=5432,DB_NAME=qaa_dev,DB_USER=postgres,CLOUD_SQL_INSTANCE=qaaw-492106:me-central1:qaa-db-dev,WHATSAPP_API_URL=https://waba-v2.360dialog.io,EMBEDDING_MODEL=text-embedding-004,EMBEDDING_DIMENSIONS=768,EMBEDDING_BATCH_SIZE=250,CHUNK_SIZE=500,CHUNK_MIN_LENGTH=20,CHUNK_MAX_KEYWORDS=8,SIMILARITY_THRESHOLD=0.35,SEARCH_RESULT_LIMIT=3,DEFAULT_CHANNEL=whatsapp_registration,LLM_MODEL=gemini-2.5-flash,LLM_REGION=us-central1,LLM_TEMPERATURE=0.3,LLM_MAX_TOKENS=512,LLM_API_TIMEOUT=15.0
+            --set-env-vars=ENVIRONMENT=dev,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},GCP_REGION=${{ env.GCP_REGION }},DB_HOST=34.18.37.125,DB_PORT=5432,DB_NAME=qaa_dev,DB_USER=postgres,CLOUD_SQL_INSTANCE=qaaw-492106:me-central1:qaa-db-dev,WHATSAPP_API_URL=https://waba-v2.360dialog.io,EMBEDDING_MODEL=text-embedding-004,EMBEDDING_DIMENSIONS=768,EMBEDDING_BATCH_SIZE=250,CHUNK_SIZE=500,CHUNK_MIN_LENGTH=20,CHUNK_MAX_KEYWORDS=8,SIMILARITY_THRESHOLD=0.35,SEARCH_RESULT_LIMIT=3,DEFAULT_CHANNEL=whatsapp_registration,LLM_MODEL=gemini-2.5-flash,LLM_REGION=us-central1,LLM_TEMPERATURE=0.3,LLM_MAX_TOKENS=512,LLM_API_TIMEOUT=15.0,FRONTEND_URL=https://qaa-frontend-dev-um52aa4moa-ww.a.run.app
             --set-secrets=DB_PASSWORD=qaa-db-password-dev:latest,WHATSAPP_API_KEY=qaa-whatsapp-api-key:latest,JWT_SECRET_KEY=qaa-jwt-secret:latest
 
       - name: Verify deployment
