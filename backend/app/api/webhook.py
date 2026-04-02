@@ -12,6 +12,7 @@ from app.services.conversation import (
     get_conversation_history,
     escalate_conversation,
     create_escalation_ticket,
+    auto_assign_agent,
     save_message,
     log_webhook,
 )
@@ -243,7 +244,12 @@ async def process_message(payload: dict):
         if content.lower() in ESCALATION_TRIGGERS:
             context = escalate_conversation(conv["id"], user["id"], reason=content)
             create_escalation_ticket(conv["id"], user["id"], "whatsapp_registration", content, content)
-            logger.info(f"Escalation for {phone}: {context['escalation_reason']}")
+            # Try auto-assign to best available agent
+            assigned = auto_assign_agent(conv["id"], "whatsapp_registration")
+            if assigned:
+                logger.info(f"Auto-assigned {phone} to {assigned['agent_name']}")
+            else:
+                logger.info(f"No agents available for {phone}, staying in queue")
             result = await send_text_message(phone, ESCALATION_MSG)
             ai_intent = "escalation"
             reply_text = ESCALATION_MSG

@@ -304,6 +304,157 @@ async def agent_reply(conversation_id: str, request: Request, user: dict = Depen
     return {"status": "sent", "whatsapp_message_id": wa_msg_id}
 
 
+# ── AI Context Summary ─────────────────────────────────────
+
+@router.get("/conversations/{conversation_id}/summary")
+async def conversation_summary(conversation_id: str, user: dict = Depends(get_current_user)):
+    """Generate an AI summary of the conversation for agent handoff."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT direction::text, content, ai_intent, created_at
+            FROM messages WHERE conversation_id = %s
+            ORDER BY created_at ASC
+        """, (conversation_id,))
+        msgs = cur.fetchall()
+
+        cur.execute("""
+            SELECT u.display_name, u.phone_number, c.escalation_reason::text, c.language::text
+            FROM conversations c JOIN users u ON u.id = c.user_id
+            WHERE c.id = %s
+        """, (conversation_id,))
+        info = cur.fetchone()
+
+    if not msgs:
+        return {"summary": "No messages in this conversation yet."}
+
+    # Build conversation text for LLM
+    lines = []
+    for m in msgs[-20:]:
+        role = "User" if m[0] == "inbound" else ("Agent" if m[2] == "agent_reply" else "Bot")
+        lines.append(f"{role}: {m[1]}")
+    conversation_text = "\n".join(lines)
+
+    user_name = info[0] if info else "Unknown"
+    phone = info[1] if info else ""
+    reason = info[2] if info else "user_requested"
+    language = info[3] if info else "en"
+
+    prompt = (
+        f"Summarize this customer support conversation in 2-3 sentences for an agent taking over.\n"
+        f"Customer: {user_name} ({phone}), Language: {language}, Escalation reason: {reason}\n\n"
+        f"Conversation:\n{conversation_text}\n\n"
+        f"Write a brief handoff summary: what the user asked, what the bot answered, "
+        f"and what the user still needs help with. Keep it under 80 words."
+    )
+
+    try:
+        from app.services.llm import generate_response
+        summary = await generate_response(prompt, "", "en")
+        if summary:
+            return {"summary": summary}
+    except Exception as e:
+        logger.warning(f"Summary generation failed: {e}")
+
+    # Fallback: simple text summary
+    user_msgs = [m[1] for m in msgs if m[0] == "inbound"]
+    last_q = user_msgs[-1] if user_msgs else "No user messages"
+    return {"summary": f"User {user_name} ({phone}) asked: \"{last_q[:150]}\" — escalation reason: {reason}"}
+
+
+# ── Transfer Conversation ──────────────────────────────────
+
+@router.post("/conversations/{conversation_id}/transfer")
+async def transfer_conversation(conversation_id: str, request: Request, user: dict = Depends(get_current_user)):
+    body = await request.json()
+    target_agent_id = body.get("agent_id", "").strip()
+    if not target_agent_id:
+        raise HTTPException(400, "agent_id is required")
+
+    current_agent_id = user.get("agent_id")
+
+    with get_db() as conn:
+        cur = conn.cursor()
+
+        # Verify target agent exists and has capacity
+        cur.execute("""
+            SELECT a.id, u.display_name, a.active_chats, a.max_concurrent_chats, a.status::text
+            FROM agents a JOIN users u ON u.id = a.user_id
+            WHERE a.id = %s
+        """, (target_agent_id,))
+        target = cur.fetchone()
+        if not target:
+            raise HTTPException(404, "Target agent not found")
+        if target[2] >= target[3]:
+            raise HTTPException(409, f"{target[1]} is at max capacity ({target[3]} chats)")
+
+        # Transfer: update conversation agent
+        cur.execute("""
+            UPDATE conversations SET agent_id = %s
+            WHERE id = %s AND status = 'agent_handling'
+            RETURNING id
+        """, (target_agent_id, conversation_id))
+
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Conversation not found or not in agent_handling")
+
+        # Update ticket
+        cur.execute("""
+            UPDATE tickets SET assigned_agent_id = %s
+            WHERE conversation_id = %s AND status NOT IN ('resolved', 'closed')
+        """, (target_agent_id, conversation_id))
+
+        # Update agent chat counts
+        cur.execute(
+            "UPDATE agents SET active_chats = active_chats + 1, last_active_at = NOW() WHERE id = %s",
+            (target_agent_id,),
+        )
+        if current_agent_id:
+            cur.execute(
+                "UPDATE agents SET active_chats = GREATEST(active_chats - 1, 0) WHERE id = %s",
+                (current_agent_id,),
+            )
+
+        # Audit log
+        cur.execute("""
+            INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, new_value)
+            VALUES (%s, %s, 'transfer_conversation', 'conversation', %s, %s)
+        """, (str(uuid.uuid4()), user["sub"], conversation_id,
+              json.dumps({"from_agent": current_agent_id, "to_agent": target_agent_id, "to_name": target[1]})))
+
+    return {"status": "transferred", "to_agent": target[1]}
+
+
+# ── Available Agents (for transfer dropdown) ───────────────
+
+@router.get("/agents/available")
+async def available_agents(user: dict = Depends(get_current_user)):
+    """List agents for transfer dropdown."""
+    current_agent_id = user.get("agent_id")
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT a.id, u.display_name, a.department::text, a.status::text,
+                   a.active_chats, a.max_concurrent_chats
+            FROM agents a
+            JOIN users u ON u.id = a.user_id
+            WHERE u.user_type IN ('agent', 'supervisor', 'admin')
+              AND a.id != COALESCE(%s, '')
+            ORDER BY a.status = 'online' DESC, a.active_chats ASC
+        """, (current_agent_id,))
+        rows = cur.fetchall()
+
+    return [
+        {
+            "agent_id": str(r[0]), "name": r[1], "department": r[2],
+            "status": r[3], "active_chats": r[4], "max_chats": r[5],
+            "has_capacity": r[4] < r[5],
+        }
+        for r in rows
+    ]
+
+
 # ── Resolve ─────────────────────────────────────────────────
 
 @router.post("/conversations/{conversation_id}/resolve")

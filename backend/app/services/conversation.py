@@ -168,6 +168,85 @@ def create_escalation_ticket(conversation_id, user_id, channel: str = "whatsapp_
     return ticket_id
 
 
+def auto_assign_agent(conversation_id, channel: str = "whatsapp_registration") -> dict | None:
+    """Find best available agent and assign. Returns agent info or None."""
+    with get_db() as conn:
+        cur = conn.cursor()
+
+        # Get ticket department (default: registration)
+        cur.execute(
+            "SELECT department::text FROM tickets WHERE conversation_id = %s AND status = 'open' LIMIT 1",
+            (conversation_id,),
+        )
+        dept_row = cur.fetchone()
+        department = dept_row[0] if dept_row else "registration"
+
+        # Find least-loaded online agent in matching department first
+        cur.execute("""
+            SELECT a.id, u.display_name, u.email, a.department::text, a.active_chats, a.max_concurrent_chats
+            FROM agents a
+            JOIN users u ON u.id = a.user_id
+            WHERE a.status = 'online'
+              AND u.user_type IN ('agent', 'supervisor', 'admin')
+              AND a.active_chats < a.max_concurrent_chats
+              AND a.department = %s
+            ORDER BY a.active_chats ASC, a.last_active_at DESC
+            LIMIT 1
+        """, (department,))
+        agent_row = cur.fetchone()
+
+        # Fallback: any online agent with capacity
+        if not agent_row:
+            cur.execute("""
+                SELECT a.id, u.display_name, u.email, a.department::text, a.active_chats, a.max_concurrent_chats
+                FROM agents a
+                JOIN users u ON u.id = a.user_id
+                WHERE a.status = 'online'
+                  AND u.user_type IN ('agent', 'supervisor', 'admin')
+                  AND a.active_chats < a.max_concurrent_chats
+                ORDER BY a.active_chats ASC, a.last_active_at DESC
+                LIMIT 1
+            """)
+            agent_row = cur.fetchone()
+
+        if not agent_row:
+            return None  # No agents available — stays in queue
+
+        agent_id = agent_row[0]
+
+        # Atomic assign (same pattern as pick)
+        cur.execute("""
+            UPDATE conversations
+            SET agent_id = %s, status = 'agent_handling'
+            WHERE id = %s AND status = 'waiting_agent'
+            RETURNING id
+        """, (str(agent_id), str(conversation_id)))
+
+        if cur.rowcount == 0:
+            return None
+
+        # Update ticket
+        cur.execute("""
+            UPDATE tickets SET assigned_agent_id = %s, status = 'assigned',
+                   first_response_at = COALESCE(first_response_at, NOW())
+            WHERE conversation_id = %s AND status = 'open'
+        """, (str(agent_id), str(conversation_id)))
+
+        # Increment active chats
+        cur.execute(
+            "UPDATE agents SET active_chats = active_chats + 1, last_active_at = NOW() WHERE id = %s",
+            (str(agent_id),),
+        )
+
+    logger.info(f"Auto-assigned conversation {conversation_id} to agent {agent_row[1]} ({agent_row[2]})")
+    return {
+        "agent_id": str(agent_row[0]),
+        "agent_name": agent_row[1],
+        "agent_email": agent_row[2],
+        "agent_department": agent_row[3],
+    }
+
+
 def log_webhook(direction: str, channel: str, payload: dict, status_code: int = None, error: str = None):
     """Log raw webhook payload for debugging."""
     with get_db() as conn:
