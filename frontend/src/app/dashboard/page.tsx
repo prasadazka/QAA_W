@@ -3,12 +3,21 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ProtectedLayout from "@/components/ProtectedLayout";
+import { useAuth } from "@/lib/auth";
 import { api, QueueItem, Conversation, AgentMetric } from "@/lib/api";
 import Link from "next/link";
 
 interface AssignedConversation extends Conversation {
   summary?: string;
   summaryLoading?: boolean;
+}
+
+interface MyStats {
+  active_chats: number;
+  total_tickets: number;
+  resolved: number;
+  avg_response_min: number | null;
+  total_conversations_handled: number;
 }
 
 function timeAgo(dateStr: string | null): string {
@@ -24,20 +33,25 @@ function timeAgo(dateStr: string | null): string {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [conversations, setConversations] = useState<AssignedConversation[]>([]);
   const [agents, setAgents] = useState<AgentMetric[]>([]);
+  const [myStats, setMyStats] = useState<MyStats | null>(null);
   const [picking, setPicking] = useState<string | null>(null);
+
+  const isAdminOrSup = user?.role === "admin" || user?.role === "supervisor";
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [q, convs, agentMetrics] = await Promise.all([
+        const [q, convs, stats] = await Promise.all([
           api.get<QueueItem[]>("/admin/api/queue"),
           api.get<Conversation[]>("/admin/api/conversations"),
-          api.get<AgentMetric[]>("/admin/api/metrics/agents").catch(() => []),
+          api.get<MyStats>("/admin/api/me/stats").catch(() => null),
         ]);
         setQueue(q);
+        setMyStats(stats);
         setConversations((prev) => {
           const summaryMap = new Map(prev.map(c => [c.conversation_id, c.summary]));
           return convs.map(c => ({
@@ -45,7 +59,12 @@ export default function DashboardPage() {
             summary: summaryMap.get(c.conversation_id),
           }));
         });
-        setAgents(agentMetrics);
+
+        if (isAdminOrSup) {
+          api.get<AgentMetric[]>("/admin/api/metrics/agents")
+            .then(setAgents)
+            .catch(() => {});
+        }
       } catch (e) {
         console.error(e);
       }
@@ -53,7 +72,7 @@ export default function DashboardPage() {
     load();
     const interval = setInterval(load, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAdminOrSup]);
 
   const loadSummary = async (convId: string) => {
     setConversations(prev => prev.map(c =>
@@ -82,30 +101,35 @@ export default function DashboardPage() {
     }
   };
 
-  const onlineAgents = agents.filter(a => a.status === "online").length;
-  const totalResolved = agents.reduce((sum, a) => sum + a.resolved, 0);
-
   return (
     <ProtectedLayout>
       <h2 className="text-xl font-bold text-qaa-navy-900 mb-6">Dashboard</h2>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      {/* Personal Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-sm text-gray-500">Escalation Queue</p>
+          <p className="text-sm text-gray-500">Queue</p>
           <p className="text-3xl font-bold text-qaa-gold-500 mt-1">{queue.length}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-5">
           <p className="text-sm text-gray-500">My Active Chats</p>
-          <p className="text-3xl font-bold text-qaa-navy-500 mt-1">{conversations.length}</p>
+          <p className="text-3xl font-bold text-qaa-navy-500 mt-1">{myStats?.active_chats ?? conversations.length}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-sm text-gray-500">Agents Online</p>
-          <p className="text-3xl font-bold text-green-600 mt-1">{onlineAgents}</p>
+          <p className="text-sm text-gray-500">My Tickets</p>
+          <p className="text-3xl font-bold text-qaa-navy-700 mt-1">{myStats?.total_tickets ?? 0}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-sm text-gray-500">Resolved This Week</p>
-          <p className="text-3xl font-bold text-qaa-navy-700 mt-1">{totalResolved}</p>
+          <p className="text-sm text-gray-500">My Resolved</p>
+          <p className="text-3xl font-bold text-green-600 mt-1">{myStats?.resolved ?? 0}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <p className="text-sm text-gray-500">Avg Response</p>
+          <p className="text-3xl font-bold text-qaa-navy-600 mt-1">
+            {myStats?.avg_response_min !== null && myStats?.avg_response_min !== undefined
+              ? `${myStats.avg_response_min}m`
+              : "—"}
+          </p>
         </div>
       </div>
 
@@ -141,6 +165,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <button
+                    type="button"
                     onClick={() => pick(item.conversation_id)}
                     disabled={picking === item.conversation_id}
                     className="ml-4 px-5 py-2 bg-qaa-gold-500 text-white text-sm font-medium rounded-lg hover:bg-qaa-gold-400 transition disabled:opacity-50"
@@ -221,8 +246,8 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Agent Performance */}
-      {agents.length > 0 && (
+      {/* Agent Performance — admin/supervisor only */}
+      {isAdminOrSup && agents.length > 0 && (
         <>
           <h3 className="text-lg font-semibold text-qaa-navy-900 mb-3">Agent Performance</h3>
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">

@@ -61,6 +61,45 @@ async def me(user: dict = Depends(get_current_user)):
     return user
 
 
+@router.get("/me/stats")
+async def my_stats(user: dict = Depends(get_current_user)):
+    """Return personal stats for the current agent/admin."""
+    agent_id = user.get("agent_id")
+    if not agent_id:
+        return {"total_tickets": 0, "resolved": 0, "active_chats": 0,
+                "avg_response_min": None, "total_conversations_handled": 0}
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                a.active_chats,
+                count(DISTINCT t.id) AS total_tickets,
+                count(DISTINCT t.id) FILTER (WHERE t.status = 'resolved') AS resolved,
+                ROUND(AVG(EXTRACT(EPOCH FROM (t.first_response_at - t.created_at)) / 60)::numeric, 1)
+                    AS avg_response_min,
+                (SELECT count(*) FROM conversations
+                 WHERE agent_id = %s AND status = 'resolved') AS total_handled
+            FROM agents a
+            LEFT JOIN tickets t ON t.assigned_agent_id = a.id
+            WHERE a.id = %s
+            GROUP BY a.id, a.active_chats
+        """, (str(agent_id), str(agent_id)))
+        row = cur.fetchone()
+
+    if not row:
+        return {"total_tickets": 0, "resolved": 0, "active_chats": 0,
+                "avg_response_min": None, "total_conversations_handled": 0}
+
+    return {
+        "active_chats": row[0],
+        "total_tickets": row[1],
+        "resolved": row[2],
+        "avg_response_min": float(row[3]) if row[3] else None,
+        "total_conversations_handled": row[4],
+    }
+
+
 # ── Queue ───────────────────────────────────────────────────
 
 @router.get("/queue")
