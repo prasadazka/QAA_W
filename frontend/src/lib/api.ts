@@ -74,9 +74,56 @@ class ApiClient {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   }
+
+  async upload<T = unknown>(path: string, file: File, params?: Record<string, string>): Promise<T> {
+    const token = this.getToken();
+    const form = new FormData();
+    form.append("file", file);
+    const query = params ? "?" + new URLSearchParams(params).toString() : "";
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API_URL}${path}${query}`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
 }
 
 export const api = new ApiClient();
+
+// KB types
+export interface KBStats {
+  total_entries: number;
+  with_embeddings: number;
+  without_embeddings: number;
+  total_hits: number;
+  total_documents: number;
+  total_categories: number;
+}
+
+export interface KBDocument {
+  document: string;
+  entries: number;
+  embedded: number;
+  uploaded_at: string;
+}
+
+export interface KBCategory {
+  id: string;
+  name_en: string;
+  name_ar: string;
+  is_active: boolean;
+}
+
+export interface KBSearchResult {
+  query: string;
+  query_embedding_dims: number;
+  threshold: number;
+  results: { question_en: string; similarity: number }[];
+}
 
 // Types
 export interface QueueItem {
