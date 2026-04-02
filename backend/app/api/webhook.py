@@ -7,6 +7,7 @@ from app.services.conversation import (
     save_message,
     log_webhook,
 )
+from app.services.knowledge_base import search_kb, format_kb_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -67,21 +68,43 @@ async def process_message(payload: dict):
         )
 
         # Generate response
+        ai_intent = None
+        ai_confidence = None
+        ai_matched_faq_id = None
+
         if content.lower() in ("hi", "hello", "hey", "start", "menu", "مرحبا", "السلام عليكم", "مرحبًا"):
             reply = WELCOME_MSG
+            ai_intent = "greeting"
         elif content in MENU_RESPONSES:
             reply = MENU_RESPONSES[content]
+            ai_intent = "menu_selection"
         else:
-            # For now, echo back with a helpful message
-            # This is where AI/KB lookup will plug in later
-            reply = (
-                "Thank you for your question.\n"
-                "شكرًا على سؤالك.\n\n"
-                "I'm still learning! A human agent will be able to help you soon.\n"
-                "ما زلت أتعلم! سيتمكن موظف بشري من مساعدتك قريبًا.\n\n"
-                "Type 'menu' to see options.\n"
-                "اكتب 'menu' لعرض الخيارات."
-            )
+            # Search knowledge base
+            kb_results = search_kb(content, "whatsapp_registration")
+            kb_reply = format_kb_response(kb_results)
+
+            if kb_reply:
+                reply = kb_reply
+                ai_intent = "kb_match"
+                ai_confidence = min(kb_results[0]["score"] / 10.0, 1.0)
+                ai_matched_faq_id = kb_results[0]["id"]
+            else:
+                reply = (
+                    "Thank you for your question.\n"
+                    "شكرًا على سؤالك.\n\n"
+                    "I couldn't find a specific answer. Here are some things I can help with:\n"
+                    "لم أتمكن من إيجاد إجابة محددة. إليك بعض المواضيع التي يمكنني المساعدة فيها:\n\n"
+                    "- Programs & Courses / البرامج والدورات\n"
+                    "- Admission Requirements / متطلبات القبول\n"
+                    "- Fees / الرسوم\n"
+                    "- Contact Info / معلومات الاتصال\n"
+                    "- Facilities & Fleet / المرافق والأسطول\n\n"
+                    "Type 'menu' for quick options.\n"
+                    "اكتب 'menu' للخيارات السريعة."
+                )
+                ai_intent = "no_match"
+                ai_confidence = 0.0
+                ai_matched_faq_id = None
 
         # Send reply
         result = await send_text_message(phone, reply)
@@ -97,6 +120,9 @@ async def process_message(payload: dict):
             content=reply,
             message_type="text",
             whatsapp_message_id=wa_msg_id,
+            ai_confidence=ai_confidence,
+            ai_intent=ai_intent,
+            ai_matched_faq_id=ai_matched_faq_id,
         )
 
         # Log outbound
