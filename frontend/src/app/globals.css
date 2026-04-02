@@ -1,26 +1,48 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* QAA Navy (Primary) */
+  --qaa-navy-950: #050D1A;
+  --qaa-navy-900: #0A1628;
+  --qaa-navy-800: #0F2140;
+  --qaa-navy-700: #1A3260;
+  --qaa-navy-600: #264A80;
+  --qaa-navy-500: #3366A8;
+  --qaa-navy-400: #5588C4;
+  --qaa-navy-100: #E8EFF8;
+  --qaa-navy-50: #F4F7FC;
+
+  /* QAA Gold (Accent) */
+  --qaa-gold-500: #C8962E;
+  --qaa-gold-400: #D4A94A;
+  --qaa-gold-300: #E0C06D;
+  --qaa-gold-100: #FDF5E6;
+
+  --background: #F4F7FC;
+  --foreground: #111827;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-qaa-navy-950: #050D1A;
+  --color-qaa-navy-900: #0A1628;
+  --color-qaa-navy-800: #0F2140;
+  --color-qaa-navy-700: #1A3260;
+  --color-qaa-navy-600: #264A80;
+  --color-qaa-navy-500: #3366A8;
+  --color-qaa-navy-400: #5588C4;
+  --color-qaa-navy-100: #E8EFF8;
+  --color-qaa-navy-50: #F4F7FC;
+
+  --color-qaa-gold-500: #C8962E;
+  --color-qaa-gold-400: #D4A94A;
+  --color-qaa-gold-300: #E0C06D;
+  --color-qaa-gold-100: #FDF5E6;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }

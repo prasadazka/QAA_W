@@ -59,6 +59,21 @@ class ApiClient {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   }
+
+  async put<T = unknown>(path: string, body?: unknown): Promise<T> {
+    const res = await this.fetch(path, {
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async delete<T = unknown>(path: string): Promise<T> {
+    const res = await this.fetch(path, { method: "DELETE" });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
 }
 
 export const api = new ApiClient();
@@ -156,4 +171,65 @@ export interface AgentMetric {
   total_tickets: number;
   resolved: number;
   avg_response_min: number | null;
+}
+
+// Admin types
+export interface AdminUser {
+  user_id: string;
+  email: string;
+  name: string;
+  role: string;
+  department: string | null;
+  status: string | null;
+  agent_id: string | null;
+  is_supervisor: boolean;
+  max_concurrent_chats: number;
+  active_chats: number;
+  last_active_at: string | null;
+  created_at: string;
+}
+
+export interface UserListResponse {
+  users: AdminUser[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface AllConversation {
+  conversation_id: string;
+  user_name: string;
+  phone: string;
+  status: string;
+  agent_name: string | null;
+  channel: string;
+  message_count: number;
+  escalation_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationListResponse {
+  conversations: AllConversation[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface ActivityLog {
+  id: string;
+  agent_name: string;
+  agent_email: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ActivityListResponse {
+  logs: ActivityLog[];
+  total: number;
+  page: number;
+  per_page: number;
 }

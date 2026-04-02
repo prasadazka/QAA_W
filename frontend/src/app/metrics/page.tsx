@@ -36,7 +36,9 @@ export default function MetricsPage() {
   if (!metrics) {
     return (
       <ProtectedLayout>
-        <p className="text-gray-500">Loading metrics...</p>
+        <div className="flex items-center justify-center py-20">
+          <div className="w-8 h-8 border-3 border-qaa-navy-500 border-t-transparent rounded-full animate-spin" />
+        </div>
       </ProtectedLayout>
     );
   }
@@ -46,46 +48,46 @@ export default function MetricsPage() {
 
   return (
     <ProtectedLayout>
-      <h2 className="text-xl font-bold text-gray-800 mb-6">Metrics</h2>
+      <h2 className="text-xl font-bold text-qaa-navy-900 mb-6">Metrics</h2>
 
       {/* Overview Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card label="Total Conversations" value={c.total} />
-        <Card label="Today" value={c.today} color="text-blue-600" />
-        <Card label="This Week" value={c.this_week} color="text-blue-600" />
-        <Card label="Total Escalated" value={c.total_escalated} color="text-orange-600" />
-        <Card label="Queue Size" value={c.queue_size} color="text-red-600" />
-        <Card label="Active Handling" value={c.active_handling} color="text-yellow-600" />
-        <Card label="Resolved" value={c.resolved} color="text-green-600" />
-        <Card
+        <StatCard label="Total Conversations" value={c.total} />
+        <StatCard label="Today" value={c.today} color="text-qaa-navy-500" />
+        <StatCard label="This Week" value={c.this_week} color="text-qaa-navy-500" />
+        <StatCard label="Total Escalated" value={c.total_escalated} color="text-qaa-gold-500" />
+        <StatCard label="Queue Size" value={c.queue_size} color="text-red-600" />
+        <StatCard label="Active Handling" value={c.active_handling} color="text-amber-600" />
+        <StatCard label="Resolved" value={c.resolved} color="text-green-600" />
+        <StatCard
           label="Escalation Rate"
           value={c.total > 0 ? `${((c.total_escalated / c.total) * 100).toFixed(1)}%` : "0%"}
-          color="text-orange-600"
+          color="text-qaa-gold-500"
         />
       </div>
 
       {/* Ticket Stats */}
-      <h3 className="text-lg font-semibold text-gray-700 mb-3">Ticket Performance (This Week)</h3>
+      <h3 className="text-lg font-semibold text-qaa-navy-900 mb-3">Ticket Performance (This Week)</h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card label="Total Tickets" value={t.total} />
-        <Card label="Resolved" value={t.resolved} color="text-green-600" />
-        <Card
+        <StatCard label="Total Tickets" value={t.total} />
+        <StatCard label="Resolved" value={t.resolved} color="text-green-600" />
+        <StatCard
           label="Avg First Response"
           value={t.avg_first_response_min ? `${t.avg_first_response_min}m` : "N/A"}
-          color="text-blue-600"
+          color="text-qaa-navy-500"
         />
-        <Card
+        <StatCard
           label="Avg Resolution"
           value={t.avg_resolution_min ? `${t.avg_resolution_min}m` : "N/A"}
-          color="text-blue-600"
+          color="text-qaa-navy-500"
         />
       </div>
 
       {/* Top Intents */}
-      <h3 className="text-lg font-semibold text-gray-700 mb-3">Top Intents (This Week)</h3>
-      <div className="bg-white rounded-lg shadow p-4 mb-8">
+      <h3 className="text-lg font-semibold text-qaa-navy-900 mb-3">Top Intents (This Week)</h3>
+      <div className="bg-white rounded-xl border border-gray-100 p-5 mb-8">
         {metrics.top_intents.length === 0 ? (
-          <p className="text-gray-500 text-sm">No data yet</p>
+          <p className="text-gray-400 text-sm">No data yet</p>
         ) : (
           <div className="space-y-2">
             {metrics.top_intents.map((item) => {
@@ -96,7 +98,7 @@ export default function MetricsPage() {
                   <span className="text-sm text-gray-600 w-36 truncate">{item.intent}</span>
                   <div className="flex-1 bg-gray-100 rounded-full h-5">
                     <div
-                      className="bg-blue-500 rounded-full h-5 flex items-center justify-end px-2"
+                      className="bg-qaa-navy-500 rounded-full h-5 flex items-center justify-end px-2"
                       style={{ width: `${Math.max(width, 5)}%` }}
                     >
                       <span className="text-[10px] text-white font-medium">{item.count}</span>
@@ -110,35 +112,35 @@ export default function MetricsPage() {
       </div>
 
       {/* Agent Performance */}
-      <h3 className="text-lg font-semibold text-gray-700 mb-3">Agent Performance</h3>
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <h3 className="text-lg font-semibold text-qaa-navy-900 mb-3">Agent Performance</h3>
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-qaa-navy-50">
             <tr>
-              <th className="text-left p-3 font-medium text-gray-600">Agent</th>
-              <th className="text-left p-3 font-medium text-gray-600">Department</th>
-              <th className="text-left p-3 font-medium text-gray-600">Status</th>
-              <th className="text-center p-3 font-medium text-gray-600">Active</th>
-              <th className="text-center p-3 font-medium text-gray-600">Tickets</th>
-              <th className="text-center p-3 font-medium text-gray-600">Resolved</th>
-              <th className="text-center p-3 font-medium text-gray-600">Avg Response</th>
+              <th className="text-left p-3 font-medium text-qaa-navy-700">Agent</th>
+              <th className="text-left p-3 font-medium text-qaa-navy-700">Department</th>
+              <th className="text-left p-3 font-medium text-qaa-navy-700">Status</th>
+              <th className="text-center p-3 font-medium text-qaa-navy-700">Active</th>
+              <th className="text-center p-3 font-medium text-qaa-navy-700">Tickets</th>
+              <th className="text-center p-3 font-medium text-qaa-navy-700">Resolved</th>
+              <th className="text-center p-3 font-medium text-qaa-navy-700">Avg Response</th>
             </tr>
           </thead>
           <tbody>
             {agents.map((a, i) => (
-              <tr key={i} className="border-t">
+              <tr key={i} className="border-t border-gray-50">
                 <td className="p-3">
-                  <p className="font-medium">{a.name}</p>
+                  <p className="font-medium text-qaa-navy-900">{a.name}</p>
                   <p className="text-xs text-gray-400">{a.email}</p>
                 </td>
                 <td className="p-3 text-gray-600">{a.department}</td>
                 <td className="p-3">
                   <span
-                    className={`text-xs px-2 py-1 rounded-full ${
+                    className={`text-xs px-2 py-1 rounded-full font-medium ${
                       a.status === "online"
-                        ? "bg-green-100 text-green-700"
+                        ? "bg-green-50 text-green-600"
                         : a.status === "busy"
-                        ? "bg-yellow-100 text-yellow-700"
+                        ? "bg-amber-50 text-amber-600"
                         : "bg-gray-100 text-gray-500"
                     }`}
                   >
@@ -155,7 +157,7 @@ export default function MetricsPage() {
             ))}
             {agents.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-6 text-center text-gray-500">
+                <td colSpan={7} className="p-6 text-center text-gray-400">
                   No agents found
                 </td>
               </tr>
@@ -167,19 +169,19 @@ export default function MetricsPage() {
   );
 }
 
-function Card({
+function StatCard({
   label,
   value,
-  color = "text-gray-800",
+  color = "text-qaa-navy-900",
 }: {
   label: string;
   value: string | number;
   color?: string;
 }) {
   return (
-    <div className="bg-white rounded-lg shadow p-4">
+    <div className="bg-white rounded-xl border border-gray-100 p-4">
       <p className="text-xs text-gray-500">{label}</p>
-      <p className={`text-2xl font-bold ${color}`}>{value}</p>
+      <p className={`text-2xl font-bold ${color} mt-1`}>{value}</p>
     </div>
   );
 }

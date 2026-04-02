@@ -65,7 +65,6 @@ export default function ConversationPage() {
     if (!reply.trim() || sending) return;
     setSending(true);
 
-    // Optimistic append
     const optimistic: Message = {
       id: "temp-" + Date.now(),
       direction: "outbound",
@@ -104,11 +103,11 @@ export default function ConversationPage() {
     <ProtectedLayout>
       <div className="flex gap-4 h-[calc(100vh-3rem)]">
         {/* Chat Panel */}
-        <div className="flex-1 flex flex-col bg-white rounded-lg shadow">
+        <div className="flex-1 flex flex-col bg-white rounded-xl border border-gray-100 overflow-hidden">
           {/* Header */}
-          <div className="p-4 border-b flex justify-between items-center">
+          <div className="p-4 border-b border-gray-100 flex justify-between items-center">
             <div>
-              <h2 className="font-bold text-gray-800">
+              <h2 className="font-bold text-qaa-navy-900">
                 {detail?.name || "Loading..."}{" "}
                 <span className="text-sm font-normal text-gray-400">{detail?.phone}</span>
               </h2>
@@ -119,26 +118,26 @@ export default function ConversationPage() {
             <button
               onClick={handleResolve}
               disabled={resolving}
-              className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition disabled:opacity-50"
+              className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition disabled:opacity-50"
             >
               {resolving ? "Resolving..." : "Resolve"}
             </button>
           </div>
 
           {/* Messages */}
-          <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+          <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-qaa-navy-50">
             {messages.map((msg) => (
               <div
                 key={msg.id}
                 className={`flex ${msg.direction === "inbound" ? "justify-start" : "justify-end"}`}
               >
                 <div
-                  className={`max-w-[70%] rounded-lg px-4 py-2 ${
+                  className={`max-w-[70%] rounded-xl px-4 py-2.5 ${
                     msg.direction === "inbound"
                       ? "bg-white border border-gray-200 text-gray-800"
                       : msg.ai_intent === "agent_reply"
-                      ? "bg-blue-600 text-white"
-                      : "bg-green-600 text-white"
+                      ? "bg-qaa-navy-500 text-white"
+                      : "bg-qaa-gold-100 text-qaa-navy-900 border border-qaa-gold-300"
                   }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -161,18 +160,18 @@ export default function ConversationPage() {
           </div>
 
           {/* Reply Box */}
-          <form onSubmit={handleSend} className="p-4 border-t flex gap-2">
+          <form onSubmit={handleSend} className="p-4 border-t border-gray-100 flex gap-2">
             <input
               type="text"
               value={reply}
               onChange={(e) => setReply(e.target.value)}
               placeholder="Type a reply..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-qaa-navy-500 bg-gray-50"
             />
             <button
               type="submit"
               disabled={sending || !reply.trim()}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+              className="px-6 py-2.5 bg-qaa-navy-900 text-white text-sm font-medium rounded-lg hover:bg-qaa-navy-800 transition disabled:opacity-50"
             >
               Send
             </button>
@@ -180,54 +179,38 @@ export default function ConversationPage() {
         </div>
 
         {/* Info Sidebar */}
-        <div className="w-72 bg-white rounded-lg shadow p-4 space-y-4">
-          <h3 className="font-semibold text-gray-700">User Info</h3>
-          <div className="space-y-2 text-sm">
-            <div>
-              <span className="text-gray-500">Name:</span>
-              <p className="font-medium">{detail?.name || "-"}</p>
-            </div>
-            <div>
-              <span className="text-gray-500">Phone:</span>
-              <p className="font-medium">{detail?.phone || "-"}</p>
-            </div>
-            <div>
-              <span className="text-gray-500">Language:</span>
-              <p className="font-medium">{detail?.user_language || "-"}</p>
-            </div>
-            <div>
-              <span className="text-gray-500">Student ID:</span>
-              <p className="font-medium">{detail?.student_id || "N/A"}</p>
-            </div>
-            <div>
-              <span className="text-gray-500">Type:</span>
-              <p className="font-medium">{detail?.user_type || "-"}</p>
-            </div>
+        <div className="w-72 bg-white rounded-xl border border-gray-100 p-5 space-y-5">
+          <h3 className="font-semibold text-qaa-navy-900">User Info</h3>
+          <div className="space-y-3 text-sm">
+            <InfoRow label="Name" value={detail?.name} />
+            <InfoRow label="Phone" value={detail?.phone} />
+            <InfoRow label="Language" value={detail?.user_language} />
+            <InfoRow label="Student ID" value={detail?.student_id || "N/A"} />
+            <InfoRow label="Type" value={detail?.user_type} />
           </div>
 
-          <hr />
+          <hr className="border-gray-100" />
 
-          <h3 className="font-semibold text-gray-700">Escalation</h3>
-          <div className="space-y-2 text-sm">
-            <div>
-              <span className="text-gray-500">Reason:</span>
-              <p className="font-medium">{detail?.escalation_reason || "User requested"}</p>
-            </div>
-            <div>
-              <span className="text-gray-500">Escalated at:</span>
-              <p className="font-medium">
-                {detail?.escalated_at
-                  ? new Date(detail.escalated_at).toLocaleString()
-                  : "-"}
-              </p>
-            </div>
-            <div>
-              <span className="text-gray-500">Channel:</span>
-              <p className="font-medium">{detail?.channel || "-"}</p>
-            </div>
+          <h3 className="font-semibold text-qaa-navy-900">Escalation</h3>
+          <div className="space-y-3 text-sm">
+            <InfoRow label="Reason" value={detail?.escalation_reason || "User requested"} />
+            <InfoRow
+              label="Escalated at"
+              value={detail?.escalated_at ? new Date(detail.escalated_at).toLocaleString() : "-"}
+            />
+            <InfoRow label="Channel" value={detail?.channel} />
           </div>
         </div>
       </div>
     </ProtectedLayout>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div>
+      <span className="text-gray-400 text-xs">{label}</span>
+      <p className="font-medium text-qaa-navy-900">{value || "-"}</p>
+    </div>
   );
 }

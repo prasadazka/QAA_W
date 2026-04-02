@@ -8,6 +8,7 @@ from app.admin.auth import (
     create_token,
     get_current_user,
     require_role,
+    hash_password,
 )
 
 logger = logging.getLogger(__name__)
@@ -439,3 +440,403 @@ async def get_agent_metrics(user: dict = Depends(require_role("admin", "supervis
         }
         for r in rows
     ]
+
+
+# ── User Management (Admin only) ──────────────────────────
+
+@router.get("/users")
+async def list_users(
+    role: str = None, search: str = None, page: int = 1, per_page: int = 20,
+    user: dict = Depends(require_role("admin")),
+):
+    offset = (page - 1) * per_page
+    conditions = ["u.user_type IN ('agent', 'supervisor', 'admin')"]
+    params: list = []
+
+    if role:
+        conditions.append("u.user_type = %s")
+        params.append(role)
+    if search:
+        conditions.append("(u.display_name ILIKE %s OR u.email ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%"])
+
+    where = " AND ".join(conditions)
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT count(*) FROM users u WHERE {where}", params)
+        total = cur.fetchone()[0]
+
+        cur.execute(f"""
+            SELECT u.id, u.email, u.display_name, u.user_type::text,
+                   a.id AS agent_id, a.department::text, a.status::text,
+                   a.is_supervisor, a.max_concurrent_chats, a.active_chats,
+                   a.last_active_at, u.created_at
+            FROM users u
+            LEFT JOIN agents a ON a.user_id = u.id
+            WHERE {where}
+            ORDER BY u.created_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [per_page, offset])
+        rows = cur.fetchall()
+
+    return {
+        "users": [
+            {
+                "user_id": str(r[0]), "email": r[1], "name": r[2] or "",
+                "role": r[3], "agent_id": str(r[4]) if r[4] else None,
+                "department": r[5], "status": r[6],
+                "is_supervisor": r[7] or False,
+                "max_concurrent_chats": r[8] or 5,
+                "active_chats": r[9] or 0,
+                "last_active_at": str(r[10]) if r[10] else None,
+                "created_at": str(r[11]),
+            }
+            for r in rows
+        ],
+        "total": total, "page": page, "per_page": per_page,
+    }
+
+
+@router.get("/users/{user_id}")
+async def get_user(user_id: str, user: dict = Depends(require_role("admin"))):
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.id, u.email, u.display_name, u.user_type::text,
+                   a.id AS agent_id, a.department::text, a.status::text,
+                   a.is_supervisor, a.max_concurrent_chats, a.active_chats,
+                   a.last_active_at, u.created_at
+            FROM users u
+            LEFT JOIN agents a ON a.user_id = u.id
+            WHERE u.id = %s
+        """, (user_id,))
+        r = cur.fetchone()
+
+    if not r:
+        raise HTTPException(404, "User not found")
+
+    return {
+        "user_id": str(r[0]), "email": r[1], "name": r[2] or "",
+        "role": r[3], "agent_id": str(r[4]) if r[4] else None,
+        "department": r[5], "status": r[6],
+        "is_supervisor": r[7] or False,
+        "max_concurrent_chats": r[8] or 5,
+        "active_chats": r[9] or 0,
+        "last_active_at": str(r[10]) if r[10] else None,
+        "created_at": str(r[11]),
+    }
+
+
+@router.post("/users")
+async def create_user(request: Request, user: dict = Depends(require_role("admin"))):
+    body = await request.json()
+    email = body.get("email", "").strip()
+    name = body.get("name", "").strip()
+    password = body.get("password", "")
+    role = body.get("role", "agent")
+    department = body.get("department", "registration")
+    max_chats = body.get("max_concurrent_chats", 5)
+
+    if not email or not password or not name:
+        raise HTTPException(400, "email, name and password are required")
+    if role not in ("agent", "supervisor", "admin"):
+        raise HTTPException(400, "role must be agent, supervisor or admin")
+
+    pw_hash = hash_password(password)
+    new_user_id = uuid.uuid4()
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE email = %s", (email,))
+        if cur.fetchone():
+            raise HTTPException(409, "Email already exists")
+
+        cur.execute("""
+            INSERT INTO users (id, email, display_name, user_type, metadata, is_verified)
+            VALUES (%s, %s, %s, %s, %s, TRUE)
+        """, (str(new_user_id), email, name, role, json.dumps({"password_hash": pw_hash})))
+
+        agent_id = None
+        if role in ("agent", "supervisor", "admin"):
+            agent_id = uuid.uuid4()
+            cur.execute("""
+                INSERT INTO agents (id, user_id, department, status, is_supervisor, max_concurrent_chats)
+                VALUES (%s, %s, %s, 'offline', %s, %s)
+            """, (str(agent_id), str(new_user_id), department, role in ("supervisor", "admin"), max_chats))
+
+        # Audit
+        cur.execute("""
+            INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, new_value)
+            VALUES (%s, %s, 'create_user', 'user', %s, %s)
+        """, (str(uuid.uuid4()), user["sub"], str(new_user_id),
+              json.dumps({"email": email, "role": role})))
+
+    return {"user_id": str(new_user_id), "agent_id": str(agent_id) if agent_id else None,
+            "email": email, "name": name, "role": role}
+
+
+@router.put("/users/{user_id}")
+async def update_user(user_id: str, request: Request, user: dict = Depends(require_role("admin"))):
+    body = await request.json()
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, user_type::text FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "User not found")
+
+        updates = []
+        params = []
+
+        if "name" in body:
+            updates.append("display_name = %s")
+            params.append(body["name"])
+        if "email" in body:
+            updates.append("email = %s")
+            params.append(body["email"])
+        if "role" in body and body["role"] in ("agent", "supervisor", "admin"):
+            updates.append("user_type = %s")
+            params.append(body["role"])
+        if "password" in body and body["password"]:
+            pw_hash = hash_password(body["password"])
+            updates.append("metadata = jsonb_set(COALESCE(metadata, '{}'), '{password_hash}', %s)")
+            params.append(json.dumps(pw_hash))
+
+        if updates:
+            params.append(user_id)
+            cur.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = %s", params)
+
+        # Update agent record
+        agent_updates = []
+        agent_params = []
+        if "department" in body:
+            agent_updates.append("department = %s")
+            agent_params.append(body["department"])
+        if "max_concurrent_chats" in body:
+            agent_updates.append("max_concurrent_chats = %s")
+            agent_params.append(body["max_concurrent_chats"])
+        if "role" in body:
+            agent_updates.append("is_supervisor = %s")
+            agent_params.append(body["role"] in ("supervisor", "admin"))
+
+        if agent_updates:
+            agent_params.append(user_id)
+            cur.execute(f"UPDATE agents SET {', '.join(agent_updates)} WHERE user_id = %s", agent_params)
+
+        # Audit
+        cur.execute("""
+            INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, new_value)
+            VALUES (%s, %s, 'update_user', 'user', %s, %s)
+        """, (str(uuid.uuid4()), user["sub"], user_id, json.dumps(body)))
+
+    return {"status": "updated"}
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str, user: dict = Depends(require_role("admin"))):
+    if user_id == user["sub"]:
+        raise HTTPException(400, "Cannot delete yourself")
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE agents SET status = 'offline' WHERE user_id = %s", (user_id,))
+        cur.execute("UPDATE users SET user_type = 'anonymous' WHERE id = %s AND id != %s RETURNING id",
+                     (user_id, user["sub"]))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "User not found")
+
+        cur.execute("""
+            INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id)
+            VALUES (%s, %s, 'delete_user', 'user', %s)
+        """, (str(uuid.uuid4()), user["sub"], user_id))
+
+    return {"status": "deleted"}
+
+
+# ── All Conversations (Admin/Supervisor) ───────────────────
+
+@router.get("/conversations/all")
+async def all_conversations(
+    status: str = None, agent_id: str = None, search: str = None,
+    page: int = 1, per_page: int = 20,
+    user: dict = Depends(require_role("admin", "supervisor")),
+):
+    offset = (page - 1) * per_page
+    conditions = ["1=1"]
+    params: list = []
+
+    if status:
+        conditions.append("c.status = %s")
+        params.append(status)
+    if agent_id:
+        conditions.append("c.agent_id = (SELECT id FROM agents WHERE id = %s OR user_id::text = %s)")
+        params.extend([agent_id, agent_id])
+    if search:
+        conditions.append("(u.phone_number ILIKE %s OR u.display_name ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%"])
+
+    where = " AND ".join(conditions)
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT count(*) FROM conversations c JOIN users u ON u.id = c.user_id WHERE {where}", params)
+        total = cur.fetchone()[0]
+
+        cur.execute(f"""
+            SELECT c.id, u.display_name, u.phone_number, c.status,
+                   ag_u.display_name AS agent_name, c.channel::text,
+                   c.message_count, c.escalation_reason::text,
+                   c.created_at, c.updated_at
+            FROM conversations c
+            JOIN users u ON u.id = c.user_id
+            LEFT JOIN agents a ON a.id = c.agent_id
+            LEFT JOIN users ag_u ON ag_u.id = a.user_id
+            WHERE {where}
+            ORDER BY c.updated_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [per_page, offset])
+        rows = cur.fetchall()
+
+    return {
+        "conversations": [
+            {
+                "conversation_id": str(r[0]),
+                "user_name": r[1] or "Unknown", "phone": r[2] or "",
+                "status": r[3], "agent_name": r[4],
+                "channel": r[5] or "", "message_count": r[6] or 0,
+                "escalation_reason": r[7],
+                "created_at": str(r[8]), "updated_at": str(r[9]) if r[9] else "",
+            }
+            for r in rows
+        ],
+        "total": total, "page": page, "per_page": per_page,
+    }
+
+
+@router.get("/conversations/{conversation_id}/full")
+async def conversation_full(conversation_id: str, user: dict = Depends(require_role("admin", "supervisor"))):
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT c.id, c.status, c.language::text, c.channel::text,
+                   c.escalation_reason::text, c.escalated_at, c.message_count, c.created_at,
+                   u.id, u.phone_number, u.display_name, u.user_type::text,
+                   u.preferred_language::text, u.student_id,
+                   ag_u.display_name AS agent_name
+            FROM conversations c
+            JOIN users u ON u.id = c.user_id
+            LEFT JOIN agents a ON a.id = c.agent_id
+            LEFT JOIN users ag_u ON ag_u.id = a.user_id
+            WHERE c.id = %s
+        """, (conversation_id,))
+        row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(404, "Conversation not found")
+
+    return {
+        "conversation_id": str(row[0]), "status": row[1],
+        "language": row[2], "channel": row[3],
+        "escalation_reason": row[4],
+        "escalated_at": str(row[5]) if row[5] else None,
+        "message_count": row[6], "created_at": str(row[7]),
+        "user_id": str(row[8]), "phone": row[9],
+        "name": row[10] or "Unknown", "user_type": row[11],
+        "user_language": row[12], "student_id": row[13],
+        "agent_name": row[14],
+    }
+
+
+# ── Activity Log (Admin/Supervisor) ────────────────────────
+
+@router.get("/activity")
+async def get_activity(
+    agent_id: str = None, action: str = None,
+    page: int = 1, per_page: int = 50,
+    user: dict = Depends(require_role("admin", "supervisor")),
+):
+    offset = (page - 1) * per_page
+    conditions = ["1=1"]
+    params: list = []
+
+    if agent_id:
+        conditions.append("al.user_id = %s")
+        params.append(agent_id)
+    if action:
+        conditions.append("al.action = %s")
+        params.append(action)
+
+    where = " AND ".join(conditions)
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT count(*) FROM audit_logs al WHERE {where}", params)
+        total = cur.fetchone()[0]
+
+        cur.execute(f"""
+            SELECT al.id, u.display_name, u.email, al.action,
+                   al.entity_type, al.entity_id, al.new_value, al.created_at
+            FROM audit_logs al
+            LEFT JOIN users u ON u.id = al.user_id
+            WHERE {where}
+            ORDER BY al.created_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [per_page, offset])
+        rows = cur.fetchall()
+
+    return {
+        "logs": [
+            {
+                "id": str(r[0]), "agent_name": r[1] or "System",
+                "agent_email": r[2] or "", "action": r[3],
+                "entity_type": r[4], "entity_id": str(r[5]) if r[5] else None,
+                "details": r[6] if isinstance(r[6], dict) else {},
+                "created_at": str(r[7]),
+            }
+            for r in rows
+        ],
+        "total": total, "page": page, "per_page": per_page,
+    }
+
+
+# ── System Settings (Admin only) ──────────────────────────
+
+@router.get("/settings")
+async def get_settings(user: dict = Depends(require_role("admin"))):
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT key, value FROM system_settings")
+        rows = cur.fetchall()
+
+    settings_dict = {r[0]: r[1] for r in rows}
+    return {
+        "escalation_threshold": settings_dict.get("escalation_threshold", 0.3),
+        "max_queue_size": settings_dict.get("max_queue_size", 50),
+        "auto_resolve_hours": settings_dict.get("auto_resolve_hours", 24),
+        "welcome_message_en": settings_dict.get("welcome_message_en", ""),
+        "welcome_message_ar": settings_dict.get("welcome_message_ar", ""),
+        "default_department": settings_dict.get("default_department", "registration"),
+    }
+
+
+@router.put("/settings")
+async def update_settings(request: Request, user: dict = Depends(require_role("admin"))):
+    body = await request.json()
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        for key, value in body.items():
+            cur.execute("""
+                INSERT INTO system_settings (key, value, updated_by, updated_at)
+                VALUES (%s, %s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = %s, updated_by = %s, updated_at = NOW()
+            """, (key, json.dumps(value), user["sub"], json.dumps(value), user["sub"]))
+
+        cur.execute("""
+            INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, new_value)
+            VALUES (%s, %s, 'update_settings', 'system', NULL, %s)
+        """, (str(uuid.uuid4()), user["sub"], json.dumps(body)))
+
+    return {"status": "updated"}

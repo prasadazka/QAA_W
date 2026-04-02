@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import Link from "next/link";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -27,48 +28,74 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-96">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">QAA Admin</h1>
-          <p className="text-sm text-gray-500 mt-1">Qatar Aeronautical Academy</p>
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-qaa-navy-950 via-qaa-navy-900 to-qaa-navy-800">
+      {/* Decorative background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-qaa-gold-500/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 left-1/4 w-72 h-72 bg-qaa-navy-500/10 rounded-full blur-3xl" />
+      </div>
+
+      <div className="relative flex-1 flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-qaa-navy-800 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-qaa-navy-700">
+              <span className="text-qaa-gold-500 font-bold text-2xl">Q</span>
+            </div>
+            <h1 className="text-2xl font-bold text-white">Admin Portal</h1>
+            <p className="text-sm text-gray-400 mt-1">Qatar Aeronautical Academy</p>
+          </div>
+
+          {/* Card */}
+          <div className="bg-white rounded-2xl shadow-2xl p-8">
+            {error && (
+              <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg mb-4 flex items-center gap-2">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-qaa-navy-500 focus:border-transparent bg-gray-50"
+                  placeholder="agent@qaa.edu.qa"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-qaa-navy-500 focus:border-transparent bg-gray-50"
+                  placeholder="Enter your password"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 bg-qaa-navy-900 text-white font-medium rounded-lg hover:bg-qaa-navy-800 transition disabled:opacity-50"
+              >
+                {loading ? "Signing in..." : "Sign In"}
+              </button>
+            </form>
+          </div>
+
+          <div className="text-center mt-6">
+            <Link href="/" className="text-sm text-gray-400 hover:text-white transition">
+              &larr; Back to Home
+            </Link>
+          </div>
         </div>
-
-        {error && (
-          <div className="bg-red-50 text-red-600 text-sm p-3 rounded mb-4">{error}</div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="agent@qaa.edu.qa"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter your password"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition disabled:opacity-50"
-          >
-            {loading ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
       </div>
     </div>
   );
