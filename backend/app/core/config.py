@@ -55,6 +55,7 @@ class Settings:
 
     # RAG — LLM (Gemini)
     LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+    LLM_REGION = os.getenv("LLM_REGION", "us-central1")
     LLM_TEMPERATURE = _float("LLM_TEMPERATURE", 0.3)
     LLM_MAX_TOKENS = _int("LLM_MAX_TOKENS", 512)
     LLM_API_TIMEOUT = _float("LLM_API_TIMEOUT", 15.0)

@@ -5,8 +5,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 GEMINI_URL = (
-    f"https://{settings.GCP_REGION}-aiplatform.googleapis.com/v1/"
-    f"projects/{settings.GCP_PROJECT_ID}/locations/{settings.GCP_REGION}/"
+    f"https://{settings.LLM_REGION}-aiplatform.googleapis.com/v1/"
+    f"projects/{settings.GCP_PROJECT_ID}/locations/{settings.LLM_REGION}/"
     f"publishers/google/models/{settings.LLM_MODEL}:generateContent"
 )
 
