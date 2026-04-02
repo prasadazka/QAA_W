@@ -367,9 +367,9 @@ async def conversation_summary(conversation_id: str, user: dict = Depends(get_cu
 @router.post("/conversations/{conversation_id}/transfer")
 async def transfer_conversation(conversation_id: str, request: Request, user: dict = Depends(get_current_user)):
     body = await request.json()
-    target_agent_id = body.get("agent_id", "").strip()
+    target_agent_id = (body.get("target_agent_id") or body.get("agent_id") or "").strip()
     if not target_agent_id:
-        raise HTTPException(400, "agent_id is required")
+        raise HTTPException(400, "target_agent_id is required")
 
     current_agent_id = user.get("agent_id")
 
