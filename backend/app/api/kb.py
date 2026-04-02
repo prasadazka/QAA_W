@@ -299,3 +299,15 @@ def kb_stats(channel: str = Query("whatsapp_registration")):
         stats["total_categories"] = cur.fetchone()[0]
 
         return stats
+
+
+@router.delete("/clear-all")
+def clear_all(channel: str = Query("whatsapp_registration")):
+    """Delete ALL KB entries and categories for a channel."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM kb_entries WHERE channel = %s", (channel,))
+        entries = cur.rowcount
+        cur.execute("DELETE FROM kb_categories WHERE channel = %s", (channel,))
+        categories = cur.rowcount
+    return {"entries_deleted": entries, "categories_deleted": categories}
