@@ -149,7 +149,7 @@ async def _process_structured_file(filename: str, content: bytes, channel: str, 
                 """INSERT INTO kb_entries
                    (id, category_id, question_en, question_ar, answer_en, answer_ar,
                     keywords_en, keywords_ar, channel, source, source_url, embedding)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'file_upload', %s, %s)""",
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'manual_entry', %s, %s)""",
                 (entry_id, category_id,
                  row["question_en"], row["question_ar"],
                  row["answer_en"], row["answer_ar"],
@@ -206,7 +206,7 @@ async def _process_document_file(filename: str, content: bytes, channel: str, or
                 """INSERT INTO kb_entries
                    (id, category_id, question_en, question_ar, answer_en, answer_ar,
                     keywords_en, keywords_ar, channel, source, source_url, embedding)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'file_upload', %s, %s)""",
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'manual_entry', %s, %s)""",
                 (entry_id, category_id,
                  title, title,
                  body, body,
@@ -299,15 +299,6 @@ def kb_stats(channel: str = Query("whatsapp_registration")):
         stats["total_categories"] = cur.fetchone()[0]
 
         return stats
-
-
-@router.get("/enums")
-def check_enums():
-    """Temp: check enum values."""
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT enum_range(NULL::kb_content_source)")
-        return {"kb_content_source": cur.fetchone()[0]}
 
 
 @router.delete("/clear-all")
