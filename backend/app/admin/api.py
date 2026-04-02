@@ -434,25 +434,37 @@ async def available_agents(user: dict = Depends(get_current_user)):
 
     with get_db() as conn:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT a.id, u.display_name, a.department::text, a.status::text,
-                   a.active_chats, a.max_concurrent_chats
-            FROM agents a
-            JOIN users u ON u.id = a.user_id
-            WHERE u.user_type IN ('agent', 'supervisor', 'admin')
-              AND a.id != COALESCE(%s, '')
-            ORDER BY a.status = 'online' DESC, a.active_chats ASC
-        """, (current_agent_id,))
+        if current_agent_id:
+            cur.execute("""
+                SELECT a.id, u.display_name, a.department::text, a.status::text,
+                       a.active_chats, a.max_concurrent_chats
+                FROM agents a
+                JOIN users u ON u.id = a.user_id
+                WHERE u.user_type IN ('agent', 'supervisor', 'admin')
+                  AND a.id::text != %s
+                ORDER BY a.status = 'online' DESC, a.active_chats ASC
+            """, (str(current_agent_id),))
+        else:
+            cur.execute("""
+                SELECT a.id, u.display_name, a.department::text, a.status::text,
+                       a.active_chats, a.max_concurrent_chats
+                FROM agents a
+                JOIN users u ON u.id = a.user_id
+                WHERE u.user_type IN ('agent', 'supervisor', 'admin')
+                ORDER BY a.status = 'online' DESC, a.active_chats ASC
+            """)
         rows = cur.fetchall()
 
-    return [
-        {
-            "agent_id": str(r[0]), "name": r[1], "department": r[2],
-            "status": r[3], "active_chats": r[4], "max_chats": r[5],
-            "has_capacity": r[4] < r[5],
-        }
-        for r in rows
-    ]
+    return {
+        "agents": [
+            {
+                "agent_id": str(r[0]), "name": r[1], "department": r[2],
+                "status": r[3], "active_chats": r[4], "max_concurrent_chats": r[5],
+                "has_capacity": r[4] < r[5],
+            }
+            for r in rows
+        ]
+    }
 
 
 # ── Resolve ─────────────────────────────────────────────────
