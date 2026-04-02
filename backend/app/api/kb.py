@@ -549,3 +549,32 @@ def kb_stats(channel: str = Query("whatsapp_registration")):
         stats["total_categories"] = cur.fetchone()[0]
 
         return stats
+
+
+# ── TEMP: Schema inspection (remove after review) ────────────
+@router.get("/schema")
+def db_schema():
+    """Temporary: inspect full database schema."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        # All tables
+        cur.execute("""
+            SELECT table_name FROM information_schema.tables
+            WHERE table_schema = 'public' ORDER BY table_name
+        """)
+        tables = [r[0] for r in cur.fetchall()]
+
+        schema = {}
+        for table in tables:
+            cur.execute("""
+                SELECT column_name, data_type, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+            """, (table,))
+            schema[table] = [
+                {"column": r[0], "type": r[1], "nullable": r[2], "default": r[3]}
+                for r in cur.fetchall()
+            ]
+
+        return {"tables": tables, "schema": schema}
