@@ -357,6 +357,35 @@ async def search_test(q: str = Query(...), channel: str = Query("whatsapp_regist
         }
 
 
+@router.post("/fix-index")
+def fix_vector_index():
+    """Drop IVFFlat index and create HNSW (or no index for small datasets)."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        # List existing indexes
+        cur.execute("""
+            SELECT indexname, indexdef FROM pg_indexes
+            WHERE tablename = 'kb_entries' AND indexdef LIKE '%vector%'
+        """)
+        old_indexes = [{"name": r[0], "def": r[1]} for r in cur.fetchall()]
+
+        # Drop all vector indexes
+        for idx in old_indexes:
+            cur.execute(f"DROP INDEX IF EXISTS {idx['name']}")
+
+        # For small datasets (<1000), exact search is fine. Create HNSW for future.
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_kb_entries_embedding_hnsw
+            ON kb_entries USING hnsw (embedding vector_cosine_ops)
+            WITH (m = 16, ef_construction = 64)
+        """)
+
+        return {
+            "dropped_indexes": [i["name"] for i in old_indexes],
+            "created": "idx_kb_entries_embedding_hnsw (HNSW)",
+        }
+
+
 @router.delete("/clear-all")
 def clear_all(channel: str = Query("whatsapp_registration")):
     """Delete ALL KB entries and categories for a channel."""
