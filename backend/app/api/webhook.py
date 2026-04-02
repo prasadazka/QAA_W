@@ -28,11 +28,14 @@ GREETING_TRIGGERS = {
     "مرحبا", "السلام عليكم", "مرحبًا", "هلا",
 }
 
-ESCALATION_TRIGGERS = {
+ESCALATION_KEYWORDS = {
     "agent", "human", "speak to agent", "talk to human",
-    "real person", "representative", "support",
-    "موظف", "شخص حقيقي", "أريد التحدث مع شخص", "دعم",
+    "real person", "representative", "connect with",
+    "human agent", "live agent", "talk to someone",
+    "موظف", "شخص حقيقي", "أريد التحدث مع شخص", "دعم", "وكيل بشري",
 }
+# Exact-match triggers (single word shortcuts)
+ESCALATION_EXACT = {"agent", "human", "support", "موظف", "دعم"}
 
 ESCALATION_MSG = (
     "Your conversation has been forwarded to our team.\n"
@@ -165,6 +168,14 @@ NO_MATCH_MSG = (
 )
 
 
+def _is_escalation(text: str) -> bool:
+    """Check if message is an escalation request (exact or substring match)."""
+    lower = text.lower().strip()
+    if lower in ESCALATION_EXACT:
+        return True
+    return any(keyword in lower for keyword in ESCALATION_KEYWORDS)
+
+
 def _detect_language(text: str) -> str:
     arabic_chars = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
     return "ar" if arabic_chars > len(text) * 0.3 else "en"
@@ -241,7 +252,7 @@ async def process_message(payload: dict):
             return
 
         # ── 0b. Escalation request → hand over ─────────────
-        if content.lower() in ESCALATION_TRIGGERS:
+        if _is_escalation(content):
             context = escalate_conversation(conv["id"], user["id"], reason=content)
             create_escalation_ticket(conv["id"], user["id"], "whatsapp_registration", content, content)
             # Try auto-assign to best available agent
