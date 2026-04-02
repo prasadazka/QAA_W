@@ -316,12 +316,27 @@ def kb_stats(channel: str = Query("whatsapp_registration")):
 async def search_test(q: str = Query(...), channel: str = Query("whatsapp_registration")):
     """Debug: test KB search and see raw similarity scores."""
     from app.services.embeddings import get_embedding
-    query_embedding = await get_embedding(q)
+
+    try:
+        query_embedding = await get_embedding(q)
+        emb_dims = len(query_embedding) if query_embedding else 0
+    except Exception as e:
+        return {"error": f"Embedding failed: {e}"}
 
     with get_db() as conn:
         cur = conn.cursor()
+
+        # Check stored embedding dimensions
         cur.execute("""
-            SELECT e.question_en, e.answer_en,
+            SELECT vector_dims(embedding) AS dims, count(*) AS cnt
+            FROM kb_entries
+            WHERE channel = %s AND embedding IS NOT NULL
+            GROUP BY vector_dims(embedding)
+        """, (channel,))
+        dim_info = [{"dims": r[0], "count": r[1]} for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT e.question_en,
                    1 - (e.embedding <=> %s::vector) AS similarity
             FROM kb_entries e
             WHERE e.is_active = TRUE AND e.channel = %s AND e.embedding IS NOT NULL
@@ -332,8 +347,14 @@ async def search_test(q: str = Query(...), channel: str = Query("whatsapp_regist
         rows = [dict(zip(cols, row)) for row in cur.fetchall()]
         for r in rows:
             r["similarity"] = round(float(r["similarity"]), 4)
-            r["answer_en"] = r["answer_en"][:150] + "..." if len(r["answer_en"]) > 150 else r["answer_en"]
-        return {"query": q, "threshold": settings.SIMILARITY_THRESHOLD, "results": rows}
+
+        return {
+            "query": q,
+            "query_embedding_dims": emb_dims,
+            "stored_embedding_dims": dim_info,
+            "threshold": settings.SIMILARITY_THRESHOLD,
+            "results": rows,
+        }
 
 
 @router.delete("/clear-all")
